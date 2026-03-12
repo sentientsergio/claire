@@ -11,6 +11,7 @@ import {
   fileRead,
   fileWrite,
   fileList,
+  getCurrentTime,
   getToolDefinitions,
   scheduleHeartbeat,
   listHeartbeats,
@@ -29,6 +30,11 @@ import {
   getUpdateStatusToolDefinition,
   executeUpdateStatus,
 } from './tools/memory-tools.js';
+import {
+  fetchImage,
+  rememberImage,
+  getImageToolDefinitions,
+} from './tools/image-cache.js';
 import {
   getMessages,
   appendAssistantResponse,
@@ -50,7 +56,7 @@ const SONNET_MODEL = 'claude-sonnet-4-6';
 const OPUS_MODEL = 'claude-opus-4-6';
 const MAX_TOKENS = 4096;
 const OPUS_MAX_TOKENS = 8192;
-const COMPACTION_TRIGGER_TOKENS = 100_000;
+const COMPACTION_TRIGGER_TOKENS = 80_000;
 const COMPACTION_BETA = 'compact-2026-01-12';
 
 export interface ChatResult {
@@ -80,7 +86,9 @@ interface ToolInput {
   updates?: Record<string, unknown>;
 }
 
-async function executeTool(name: string, toolInput: ToolInput, workspacePath: string): Promise<string> {
+type ToolResult = string | Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam>;
+
+async function executeTool(name: string, toolInput: ToolInput, workspacePath: string): Promise<ToolResult> {
   switch (name) {
     case 'file_read':
       return await fileRead(workspacePath, toolInput.path || '');
@@ -107,6 +115,20 @@ async function executeTool(name: string, toolInput: ToolInput, workspacePath: st
       return await executeSearchMemory(toolInput.query || '', toolInput.search_type);
     case 'update_status':
       return await executeUpdateStatus(workspacePath, toolInput.updates || {});
+    case 'get_time':
+      return getCurrentTime();
+    case 'fetch_image': {
+      const result = await fetchImage(toolInput.id || '');
+      if (result.available) {
+        return [
+          result.contentBlock,
+          { type: 'text', text: `Image ${result.entry.id} — ${result.entry.caption || 'no caption'}` },
+        ];
+      }
+      return `${result.reason} Last known description: ${result.summary}`;
+    }
+    case 'remember_image':
+      return await rememberImage(toolInput.id || '');
     default:
       return `Unknown tool: ${name}`;
   }
@@ -119,6 +141,7 @@ function getAllTools(): Anthropic.Tool[] {
     ...(isCalendarConfigured() ? getCalendarToolDefinitions() : []),
     getSearchMemoryToolDefinition(),
     getUpdateStatusToolDefinition(),
+    ...getImageToolDefinitions(),
   ];
 }
 
@@ -201,10 +224,10 @@ export async function chat(
     appendAssistantResponse(assistantContent as Anthropic.Beta.BetaContentBlockParam[]);
 
     // Execute tools and append results
-    const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = [];
+    const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: ToolResult }> = [];
     for (const toolUse of toolUses) {
       const toolInput = toolUse.input as ToolInput;
-      let toolResult: string;
+      let toolResult: ToolResult;
       try {
         toolResult = await executeTool(toolUse.name, toolInput, workspacePath);
       } catch (err) {
@@ -281,10 +304,10 @@ export async function chatStreaming(
     appendAssistantResponse(finalMessage.content as unknown as Anthropic.Beta.BetaContentBlockParam[]);
 
     // Execute tools
-    const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = [];
+    const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: ToolResult }> = [];
     for (const toolUse of toolUses) {
       const toolInput = toolUse.input as ToolInput;
-      let toolResult: string;
+      let toolResult: ToolResult;
       try {
         toolResult = await executeTool(toolUse.name, toolInput, workspacePath);
       } catch (err) {
@@ -387,10 +410,10 @@ export async function opusChat(
       return turnText.trim() ? turnText : lastNonEmptyText;
     }
 
-    const toolResults: Array<{ tool_use_id: string; content: string }> = [];
+    const toolResults: Array<{ tool_use_id: string; content: ToolResult }> = [];
     for (const toolUse of toolUses) {
       const toolInput = toolUse.input as ToolInput;
-      let toolResult: string;
+      let toolResult: ToolResult;
       try {
         toolResult = await executeTool(toolUse.name, toolInput, workspacePath);
       } catch (err) {

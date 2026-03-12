@@ -10,6 +10,15 @@ import { join } from 'path';
 import cron, { ScheduledTask } from 'node-cron';
 import { sendToOwner, isTelegramRunning } from './channels/telegram.js';
 import { addMessage } from './conversation.js';
+import { chat } from './claude.js';
+import {
+  appendUserMessage,
+  getMessageCount,
+  truncateMessages,
+  rewriteMessageContent,
+  enqueueTurn,
+  persistState,
+} from './conversation-state.js';
 
 export interface ScheduledHeartbeat {
   id: string;
@@ -187,18 +196,60 @@ function scheduleHeartbeat(hb: ScheduledHeartbeat): void {
 }
 
 /**
- * Fire a scheduled heartbeat
+ * Fire a scheduled heartbeat through the unified loop.
+ *
+ * The purpose is passed as context to chat(). Claire decides whether to send
+ * anything and what to say. The [SEND] gate applies — only responses that start
+ * with [SEND] are delivered. Internal reasoning is swallowed.
  */
 async function fireHeartbeat(hb: ScheduledHeartbeat): Promise<void> {
   console.log(`[scheduled] Firing heartbeat: ${hb.id} - "${hb.purpose}"`);
-  
-  if (isTelegramRunning()) {
-    const sent = await sendToOwner(hb.purpose);
-    if (sent) {
-      // Record in conversation history
-      await addMessage(workspacePath, 'telegram', 'assistant', hb.purpose);
-      console.log(`[scheduled] Delivered: ${hb.purpose}`);
+
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const triggerText = `[System: scheduled heartbeat at ${time}. Context: "${hb.purpose}".`
+    + ' If you want to send Sergio a message, start your response with [SEND] followed by the message text.'
+    + ' If nothing needs to be said right now, respond with anything else — nothing will be delivered.]';
+
+  try {
+    const result = await enqueueTurn(async () => {
+      const triggerIndex = getMessageCount();
+      appendUserMessage(triggerText);
+
+      try {
+        const chatResult = await chat(workspacePath);
+        const text = chatResult.text.trim();
+
+        if (!text.startsWith('[SEND]')) {
+          truncateMessages(triggerIndex);
+          await persistState();
+          console.log(`[scheduled] ${hb.id}: hold (no [SEND] prefix)`);
+          return null;
+        }
+
+        chatResult.text = text.slice('[SEND]'.length).trim();
+        rewriteMessageContent(triggerIndex, `[Scheduled heartbeat: ${time}]`);
+        await persistState();
+        return chatResult;
+      } catch (err) {
+        truncateMessages(triggerIndex);
+        await persistState();
+        throw err;
+      }
+    });
+
+    if (!result) return;
+
+    const responseText = result.text;
+    if (isTelegramRunning()) {
+      const sent = await sendToOwner(responseText);
+      if (sent) {
+        await addMessage(workspacePath, 'telegram', 'assistant', responseText);
+        console.log(`[scheduled] ${hb.id}: delivered "${responseText.substring(0, 60)}..."`);
+      }
     }
+  } catch (err) {
+    console.error(`[scheduled] ${hb.id}: error`, err);
   }
 }
 

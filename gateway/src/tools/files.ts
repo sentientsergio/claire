@@ -113,6 +113,23 @@ export async function fileList(
   }
 }
 
+/**
+ * Return the current date and time as a formatted string.
+ */
+export function getCurrentTime(): string {
+  const now = new Date();
+  return now.toLocaleString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZoneName: 'short',
+  });
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
@@ -225,13 +242,13 @@ export function getToolDefinitions(): Anthropic.Tool[] {
     },
     {
       name: 'schedule_heartbeat',
-      description: 'Schedule a future heartbeat/reminder. Use for one-time check-ins (before meetings, end of day) or recurring reminders. The message will be sent to Telegram at the specified time.',
+      description: 'Schedule a future heartbeat. At the scheduled time, you will wake up with this purpose as context and decide whether to reach out to Sergio. The purpose is NOT sent directly — it goes through the unified loop with the [SEND] gate, same as cron heartbeats. Use for intentional future check-ins (e.g. "Mounjaro shot reminder at 7pm", "Check in after Sergio\'s meeting").',
       input_schema: {
         type: 'object' as const,
         properties: {
           purpose: {
             type: 'string',
-            description: 'The message to send when the heartbeat fires. Keep it brief.',
+            description: 'Context for what this heartbeat is about. You will see this when you wake up and decide what (if anything) to say.',
           },
           scheduled_for: {
             type: 'string',
@@ -266,6 +283,15 @@ export function getToolDefinitions(): Anthropic.Tool[] {
           },
         },
         required: ['id'],
+      },
+    },
+    {
+      name: 'get_time',
+      description: 'Get the current date and time. Use this when you need to know the precise current time — the system prompt timestamp may be up to 10 minutes stale within a long session.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {},
+        required: [],
       },
     },
   ];

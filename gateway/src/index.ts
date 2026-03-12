@@ -19,6 +19,8 @@ import { initScheduledHeartbeats } from './scheduled-heartbeats.js';
 import { startWebhookServer, registerDefaultHandler } from './webhook.js';
 import { initMemoryStore, initFactsStore } from './memory/index.js';
 import { initConversationState } from './conversation-state.js';
+import { startHealthMonitoring } from './health.js';
+import { initImageCache } from './tools/image-cache.js';
 import { resolve } from 'path';
 
 const PORT = parseInt(process.env.GATEWAY_PORT || '18789', 10);
@@ -39,6 +41,10 @@ async function main() {
   } catch (err) {
     console.error('  Conversation state: failed to initialize', err);
   }
+
+  // Initialize image cache
+  initImageCache(resolve(WORKSPACE_PATH));
+  console.log('  Image cache: initialized');
 
   // Initialize memory store (vector chunks — write pipeline only)
   try {
@@ -80,6 +86,9 @@ async function main() {
 
   // Start heartbeat scheduler (regular cadence)
   startHeartbeat(WORKSPACE_PATH);
+
+  // Validate credentials and start periodic health monitoring
+  await startHealthMonitoring();
 
   // Handle graceful shutdown
   process.on('SIGINT', () => {

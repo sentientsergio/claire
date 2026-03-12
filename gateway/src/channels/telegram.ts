@@ -13,6 +13,8 @@ import { Bot, Context } from 'grammy';
 import { chat, ChatResult } from '../claude.js';
 import {
   appendUserMessage,
+  appendUserContentBlocks,
+  replaceImageBlocks,
   rollbackLastUserMessage,
   enqueueTurn,
   persistState,
@@ -22,6 +24,7 @@ import {
   isInitialized as isMemoryInitialized,
 } from '../memory/index.js';
 import { addMessage } from '../conversation.js';
+import { cacheImage, updateImageSummary } from '../tools/image-cache.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -109,6 +112,15 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
         }
       });
 
+      // Log the user message regardless of whether Claire responds
+      await addMessage(workspacePath, 'telegram', 'user', userMessage);
+
+      const isHold = result.text.trim() === 'NO_RESPONSE' || result.text.includes('NO_RESPONSE');
+      if (isHold) {
+        console.log('[telegram] Claire is holding — no response sent');
+        return;
+      }
+
       const showThinking = await getShowThinking(workspacePath);
       let fullResponse: string;
       if (showThinking && result.thinking) {
@@ -117,11 +129,8 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
         fullResponse = result.text;
       }
 
-      // Log to messages.json for heartbeat context and cross-channel reads
-      await addMessage(workspacePath, 'telegram', 'user', userMessage);
       await addMessage(workspacePath, 'telegram', 'assistant', result.text);
 
-      // Store in vector memory for deep recall
       if (isMemoryInitialized()) {
         storeExchange(userMessage, result.text, 'telegram').catch(err => {
           console.error('[telegram] Failed to store exchange in memory:', err);
@@ -196,21 +205,67 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
 
   bot.on('message:photo', async (ctx) => {
     const caption = ctx.message.caption || '';
-    console.log(`[telegram] Received photo`);
+    const photos = ctx.message.photo;
+    const largest = photos[photos.length - 1];
+    console.log(`[telegram] Received photo (${largest.width}x${largest.height})`);
     await ctx.replyWithChatAction('typing');
 
     try {
-      const userMessage = caption
-        ? `[Attached photo]\n\n${caption}`
-        : `[Attached photo]\n\n(User shared a photo without additional text. Acknowledge receipt. Note that you cannot yet see image contents directly.)`;
+      const file = await ctx.api.getFile(largest.file_id);
+      const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+      const imageRes = await fetch(fileUrl);
+
+      if (!imageRes.ok) {
+        throw new Error(`Failed to download photo: ${imageRes.status}`);
+      }
+
+      const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+      const mimeType: string =
+        file.file_path?.endsWith('.png') ? 'image/png' : 'image/jpeg';
+
+      const { entry, base64 } = await cacheImage(imageBuffer, mimeType, caption);
+
+      const contentBlocks = [
+        {
+          type: 'image' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+            data: base64,
+          },
+        },
+        {
+          type: 'text' as const,
+          text: `[Photo: ${entry.id}] ${caption || '(Photo shared without caption)'}`,
+        },
+      ];
 
       const result = await enqueueTurn(async () => {
-        appendUserMessage(userMessage);
-        return await chat(workspacePath);
+        const msgIndex = appendUserContentBlocks(contentBlocks);
+        try {
+          const chatResult = await chat(workspacePath);
+          replaceImageBlocks(
+            msgIndex,
+            `[Photo: ${entry.id} — ${caption || 'no caption'} (${largest.width}x${largest.height})]`
+          );
+          return chatResult;
+        } catch (err) {
+          rollbackLastUserMessage();
+          throw err;
+        }
       });
 
-      await addMessage(workspacePath, 'telegram', 'user', userMessage);
+      updateImageSummary(entry.id, result.text.slice(0, 500)).catch(() => {});
+
+      const logMessage = caption ? `[Photo: ${entry.id}] ${caption}` : `[Photo: ${entry.id}]`;
+      await addMessage(workspacePath, 'telegram', 'user', logMessage);
       await addMessage(workspacePath, 'telegram', 'assistant', result.text);
+
+      if (isMemoryInitialized()) {
+        storeExchange(logMessage, result.text, 'telegram').catch(err => {
+          console.error('[telegram] Failed to store photo exchange in memory:', err);
+        });
+      }
 
       const showThinking = await getShowThinking(workspacePath);
       const fullResponse = showThinking && result.thinking

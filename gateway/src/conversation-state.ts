@@ -72,6 +72,35 @@ export function appendUserMessage(content: string): void {
 }
 
 /**
+ * Append a user message with structured content blocks (e.g. image + text).
+ * Returns the index of the appended message for post-turn modification.
+ */
+export function appendUserContentBlocks(blocks: ContentBlockParam[]): number {
+  const index = messages.length;
+  messages.push({ role: 'user', content: blocks });
+  return index;
+}
+
+/**
+ * Replace image blocks in a specific user message with a text placeholder.
+ * Used after a vision turn to avoid persisting large base64 data.
+ */
+export function replaceImageBlocks(messageIndex: number, placeholder: string): void {
+  const msg = messages[messageIndex];
+  if (!msg || msg.role !== 'user' || !Array.isArray(msg.content)) return;
+
+  msg.content = (msg.content as ContentBlockParam[]).map(block => {
+    if (typeof block === 'object' && block !== null && 'type' in block) {
+      const typed = block as { type: string };
+      if (typed.type === 'image') {
+        return { type: 'text' as const, text: placeholder };
+      }
+    }
+    return block;
+  });
+}
+
+/**
  * Append an assistant response (full content blocks) to the conversation.
  * Strips thinking blocks before storing.
  */
@@ -95,6 +124,30 @@ export function rollbackLastUserMessage(): void {
   if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
     messages.pop();
     console.log('[conversation-state] Rolled back last user message after failed turn');
+  }
+}
+
+/**
+ * Truncate the messages array to a specific length.
+ * Used by the heartbeat to roll back an entire turn (trigger + response)
+ * when the decision is NO_NOTIFICATION.
+ */
+export function truncateMessages(length: number): void {
+  if (length >= 0 && length < messages.length) {
+    const removed = messages.length - length;
+    messages.length = length;
+    console.log(`[conversation-state] Truncated ${removed} message(s)`);
+  }
+}
+
+/**
+ * Rewrite the content of a message at a specific index.
+ * Used to replace the heartbeat trigger with a minimal clock marker
+ * after Claire decides to send a real message.
+ */
+export function rewriteMessageContent(index: number, content: string): void {
+  if (index >= 0 && index < messages.length) {
+    messages[index] = { ...messages[index], content };
   }
 }
 
