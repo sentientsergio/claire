@@ -21,9 +21,12 @@ import { initMemoryStore, initFactsStore } from './memory/index.js';
 import { initConversationState } from './conversation-state.js';
 import { startHealthMonitoring } from './health.js';
 import { initImageCache } from './tools/image-cache.js';
+import { startMcpServer, stopMcpServer } from './mcp-server.js';
 import { resolve } from 'path';
 
 const PORT = parseInt(process.env.GATEWAY_PORT || '18789', 10);
+const MCP_PORT = parseInt(process.env.MCP_PORT || '18793', 10);
+const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN || '';
 const WORKSPACE_PATH = process.env.WORKSPACE_PATH || '../workspace';
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_OWNER_ID = process.env.TELEGRAM_OWNER_ID;
@@ -65,6 +68,14 @@ async function main() {
   // Start WebSocket server
   const server = createServer(PORT, WORKSPACE_PATH);
 
+  // Start MCP server (Channel Sense — the sole external interface)
+  try {
+    await startMcpServer(MCP_PORT, WORKSPACE_PATH, MCP_AUTH_TOKEN);
+    console.log(`  MCP server: enabled (port: ${MCP_PORT})`);
+  } catch (err) {
+    console.error('  MCP server: failed to start', err);
+  }
+
   // Start webhook HTTP server
   startWebhookServer();
   registerDefaultHandler();
@@ -94,6 +105,7 @@ async function main() {
   process.on('SIGINT', () => {
     console.log('\nShutting down...');
     stopTelegram();
+    stopMcpServer();
     server.close();
     process.exit(0);
   });
@@ -101,6 +113,7 @@ async function main() {
   process.on('SIGTERM', () => {
     console.log('\nShutting down...');
     stopTelegram();
+    stopMcpServer();
     server.close();
     process.exit(0);
   });

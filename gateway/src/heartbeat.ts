@@ -18,7 +18,7 @@ import { promisify } from 'util';
 import { chat, opusChat } from './claude.js';
 import { cleanExpiredImages } from './tools/image-cache.js';
 import { getSystemPrompt } from './workspace.js';
-import { sendToOwner, isTelegramRunning } from './channels/telegram.js';
+import { isTelegramRunning } from './channels/telegram.js';
 import {
   loadConversationLog,
   getRecentMessages,
@@ -36,6 +36,7 @@ import {
   enqueueTurn,
   persistState,
 } from './conversation-state.js';
+import { channelRegistry } from './channel-registry.js';
 
 const execAsync = promisify(exec);
 
@@ -192,7 +193,9 @@ async function performHeartbeat(workspacePath: string): Promise<void> {
     const hadContactToday = await hasContactTodayAnyChannel(workspacePath);
     const isFirstMorning = isMorning() && !hadContactToday;
 
-    let triggerText = `[System: heartbeat tick at ${time}.`;
+    const channelStatus = channelRegistry.getChannelStatusText();
+
+    let triggerText = `[System: heartbeat tick at ${time}. ${channelStatus}`;
 
     if (isFirstHeartbeatAfterSleep()) {
       triggerText += ' You are waking up. This is your first heartbeat of the day — you have been asleep since midnight.'
@@ -208,10 +211,16 @@ async function performHeartbeat(workspacePath: string): Promise<void> {
 
     triggerText += ' Heartbeats fire hourly (7 AM–midnight). You decide whether to say anything.'
       + ' You are free to: send a message, do maintenance, write to files, or stay quiet.'
-      + ' IMPORTANT: If you want to send Sergio a message, start your response with [SEND] followed by the message text.'
+      + ' IMPORTANT: If you want to send a message, start your response with [SEND:channel-name] (e.g., [SEND:telegram])'
+      + ' followed by the message text. You can also use [SEND] without a channel to use follow-the-sun routing'
+      + ' (active sessions first, persistent channels as fallback).'
+      + ' Choose the channel based on who is reachable: prefer active sessions for real-time conversation,'
+      + ' persistent channels for reliable delivery when no session is live.'
       + ' If holding or staying quiet, respond with your reasoning (what you noticed, what you decided, why).'
       + ' Your reasoning stays in the conversation trace — you will see it next heartbeat.'
       + ' Only [SEND] messages reach Sergio. Everything else is your internal continuity.]';
+
+    let heartbeatTargetChannel: string | null = null;
 
     const result = await enqueueTurn(async () => {
       const triggerIndex = getMessageCount();
@@ -221,14 +230,18 @@ async function performHeartbeat(workspacePath: string): Promise<void> {
         const chatResult = await chat(workspacePath);
 
         const text = chatResult.text.trim();
-        if (!text.startsWith('[SEND]')) {
+
+        // Parse [SEND:channel] or [SEND] directive
+        const sendMatch = text.match(/^\[SEND(?::([^\]]+))?\]/);
+        if (!sendMatch) {
           rewriteMessageContent(triggerIndex, `[Heartbeat: ${time}]`);
           await persistState();
           console.log(`  Decision: hold — reasoning preserved (${text.length} chars)`);
           return null;
         }
 
-        chatResult.text = text.slice('[SEND]'.length).trim();
+        heartbeatTargetChannel = sendMatch[1] || null; // null = follow-the-sun
+        chatResult.text = text.slice(sendMatch[0].length).trim();
         rewriteMessageContent(triggerIndex, `[Heartbeat: ${time}]`);
         await persistState();
         return chatResult;
@@ -242,21 +255,38 @@ async function performHeartbeat(workspacePath: string): Promise<void> {
     if (!result) return;
 
     const responseText = result.text;
-    console.log(`  Sending: ${responseText.substring(0, 80)}...`);
+    const targetChannel = heartbeatTargetChannel;
+    console.log(`  Sending via ${targetChannel ?? 'follow-the-sun'}: ${responseText.substring(0, 80)}...`);
 
-    await addMessage(workspacePath, 'telegram', 'assistant', responseText);
+    // Deliver via channel registry
+    let deliveredChannel: string | null = null;
 
-    if (isTelegramRunning()) {
-      const sent = await sendToOwner(responseText);
-      if (sent) {
-        console.log('  Delivered via Telegram');
+    if (targetChannel) {
+      const ok = await channelRegistry.deliver(targetChannel, responseText);
+      if (ok) {
+        deliveredChannel = targetChannel;
+        console.log(`  Delivered via ${targetChannel}`);
       } else {
-        console.log('  Telegram failed, falling back to Mac notification');
-        await sendNotification(responseText);
+        console.log(`  ${targetChannel} delivery failed, falling back to follow-the-sun`);
       }
-    } else {
+    }
+
+    if (!deliveredChannel) {
+      const followResult = await channelRegistry.deliverFollowTheSun(responseText);
+      if (followResult) {
+        deliveredChannel = followResult.channel;
+        console.log(`  Delivered via follow-the-sun → ${deliveredChannel}`);
+      }
+    }
+
+    if (!deliveredChannel) {
+      // No channels available — fall back to Mac notification
+      console.log('  No channels available, falling back to Mac notification');
       await sendNotification(responseText);
     }
+
+    // Log to conversation
+    await addMessage(workspacePath, deliveredChannel ?? 'notification', 'assistant', responseText);
   } catch (err) {
     console.error('  Heartbeat error:', err);
   }

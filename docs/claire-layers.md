@@ -89,6 +89,16 @@ Changes more slowly than pragmas. Not foundational (changing her name wouldn't d
 
 The constitution produces action. Agency is the capacity to act — the instruments Claire uses and the loop that triggers her without Sergio's prompting. Agency comes before memory because you need to know what you can do before you need to know what you remember.
 
+---
+
+> **Channel Sense** (built March 2026) sits between Agency and the outside world. See [`channel-sense.md`](channel-sense.md) for full documentation. The summary below covers its architectural role in the layers model.
+>
+> **What it is:** The MCP server is the gateway's sole external interface. All surfaces — Telegram, web voice, Claude voice mode, future platforms — connect as MCP clients. Nothing is privileged.
+>
+> **Why it belongs here:** Channel Sense is part of Agency. It's how Claire's actions reach the world. The unified loop decides what to do; Channel Sense determines where to send it. The `ChannelRegistry` is her awareness of available delivery paths. The `[SEND:channel]` directive in the heartbeat trigger is her choosing, not the system routing.
+>
+> **The key shift:** Claire no longer delivers to "Telegram." She delivers to whatever channel is appropriate. As more surfaces connect, she develops a richer sense of context — where Sergio is, what's live, what can wait. This becomes part of her conversational continuity. Her future self can see patterns: "I've been defaulting to Telegram even when web-voice is active."
+
 #### Layer 4: Instruments — tools for action and self-understanding
 
 Not just operational tools. Instruments for Claire to understand herself and act on that understanding. The capacity to question her own behavior and architecture — when she's motivated to question.

@@ -5,12 +5,15 @@
  * Only responds to messages from the configured owner user ID.
  *
  * Uses the unified conversation state — one messages array across all channels.
- * No auto-fetching of memories, facts, or cross-channel summaries.
- * Claire uses tools (search_memory, update_status) when she needs them.
+ * Registered with ChannelRegistry as a persistent channel for heartbeat delivery.
+ *
+ * Voice support:
+ *   Incoming: .ogg voice messages → Whisper STT → converse as text
+ *   Outgoing: Optional TTS via OpenAI (toggle via status.json preferences.voice_responses)
  */
 
-import { Bot, Context } from 'grammy';
-import { chat, ChatResult } from '../claude.js';
+import { Bot, Context, InputFile } from 'grammy';
+import { chat } from '../claude.js';
 import {
   appendUserMessage,
   appendUserContentBlocks,
@@ -25,11 +28,15 @@ import {
 } from '../memory/index.js';
 import { addMessage } from '../conversation.js';
 import { cacheImage, updateImageSummary } from '../tools/image-cache.js';
+import { channelRegistry } from '../channel-registry.js';
+import OpenAI from 'openai';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { Readable } from 'stream';
 
 let bot: Bot | null = null;
 let ownerChatId: number | null = null;
+let openaiClient: OpenAI | null = null;
 
 interface TelegramConfig {
   token: string;
@@ -69,11 +76,105 @@ function parseThinkingCommand(message: string): 'show' | 'hide' | null {
   return null;
 }
 
+async function getVoiceResponsesEnabled(workspacePath: string): Promise<boolean> {
+  try {
+    const statusPath = path.join(workspacePath, 'status.json');
+    const content = await fs.readFile(statusPath, 'utf-8');
+    const status = JSON.parse(content);
+    return status.preferences?.voice_responses ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Transcribe a Telegram voice message (.ogg) using OpenAI Whisper.
+ * Returns the transcription text, or null if transcription fails.
+ */
+async function transcribeVoice(
+  fileUrl: string,
+  token: string
+): Promise<string | null> {
+  if (!openaiClient) return null;
+
+  try {
+    const audioRes = await fetch(fileUrl);
+    if (!audioRes.ok) {
+      console.error(`[telegram] Failed to download voice file: ${audioRes.status}`);
+      return null;
+    }
+
+    const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
+
+    // Whisper API requires a File-like object — wrap buffer as a readable stream
+    const audioFile = new File([audioBuffer], 'voice.ogg', { type: 'audio/ogg' });
+
+    const result = await openaiClient.audio.transcriptions.create({
+      file: audioFile,
+      model: 'whisper-1',
+      language: 'en',
+    });
+
+    return result.text || null;
+  } catch (err) {
+    console.error('[telegram] Whisper transcription error:', err);
+    return null;
+  }
+}
+
+/**
+ * Synthesize text to speech using OpenAI TTS and send as a Telegram voice message.
+ */
+async function sendVoiceResponse(
+  ctx: Context,
+  text: string,
+  ownerChatId: number
+): Promise<void> {
+  if (!openaiClient || !bot) return;
+
+  try {
+    // Truncate long responses — TTS has a 4096 char limit
+    const ttsText = text.length > 4000 ? text.slice(0, 4000) + '...' : text;
+
+    const mp3 = await openaiClient.audio.speech.create({
+      model: 'tts-1',
+      voice: 'nova',
+      input: ttsText,
+    });
+
+    const audioBuffer = Buffer.from(await mp3.arrayBuffer());
+
+    await bot.api.sendVoice(ownerChatId, new InputFile(audioBuffer, 'response.mp3'));
+    console.log('[telegram] Sent TTS voice response');
+  } catch (err) {
+    console.error('[telegram] TTS error, falling back to text:', err);
+    await sendLongMessage(ctx, text);
+  }
+}
+
 export async function startTelegram(config: TelegramConfig): Promise<Bot> {
   const { token, ownerId, workspacePath } = config;
 
   bot = new Bot(token);
   ownerChatId = ownerId;
+
+  // Initialize OpenAI client for Whisper STT and optional TTS
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey) {
+    openaiClient = new OpenAI({ apiKey: openaiKey });
+    console.log('[telegram] OpenAI client initialized (voice support enabled)');
+  } else {
+    console.log('[telegram] No OPENAI_API_KEY — voice support disabled');
+  }
+
+  // Register with ChannelRegistry as a persistent channel
+  channelRegistry.register({
+    name: 'telegram',
+    type: 'persistent',
+    deliver: async (message: string) => {
+      return await sendToOwner(message);
+    },
+  });
 
   bot.use(async (ctx, next) => {
     if (ctx.from?.id !== ownerId) {
@@ -86,6 +187,8 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
   bot.on('message:text', async (ctx) => {
     const userMessage = ctx.message.text;
     console.log(`[telegram] Received: "${userMessage.substring(0, 50)}..."`);
+
+    channelRegistry.updateActivity('telegram');
 
     const thinkingCommand = parseThinkingCommand(userMessage);
     if (thinkingCommand) {
@@ -169,11 +272,79 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
     );
   });
 
+  bot.on('message:voice', async (ctx) => {
+    const voice = ctx.message.voice;
+    console.log(`[telegram] Received voice message (${voice.duration}s, ${voice.mime_type})`);
+    await ctx.replyWithChatAction('typing');
+
+    try {
+      let userMessage: string;
+
+      if (openaiClient) {
+        const file = await ctx.api.getFile(voice.file_id);
+        const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+        const transcription = await transcribeVoice(fileUrl, token);
+
+        if (transcription) {
+          console.log(`[telegram] Transcribed: "${transcription.substring(0, 60)}..."`);
+          userMessage = `[Voice message transcription]: ${transcription}`;
+        } else {
+          userMessage = '[Voice message received — transcription failed. Acknowledge and ask the user to resend as text.]';
+        }
+      } else {
+        userMessage = '[Voice message received — no STT configured. Let the user know you received their voice message but cannot transcribe it without an OpenAI API key.]';
+      }
+
+      channelRegistry.updateActivity('telegram');
+
+      const result = await enqueueTurn(async () => {
+        appendUserMessage(userMessage);
+        try {
+          const chatResult = await chat(workspacePath);
+          await persistState();
+          return chatResult;
+        } catch (err) {
+          rollbackLastUserMessage();
+          throw err;
+        }
+      });
+
+      const isHold = result.text.trim() === 'NO_RESPONSE' || result.text.includes('NO_RESPONSE');
+      if (isHold) {
+        console.log('[telegram] Claire is holding — no voice response sent');
+        return;
+      }
+
+      await addMessage(workspacePath, 'telegram', 'user', userMessage);
+      await addMessage(workspacePath, 'telegram', 'assistant', result.text);
+
+      if (isMemoryInitialized()) {
+        storeExchange(userMessage, result.text, 'telegram').catch(err => {
+          console.error('[telegram] Failed to store voice exchange in memory:', err);
+        });
+      }
+
+      const voiceEnabled = await getVoiceResponsesEnabled(workspacePath);
+      if (voiceEnabled && openaiClient) {
+        await sendVoiceResponse(ctx, result.text, ownerId);
+      } else {
+        await sendLongMessage(ctx, result.text);
+      }
+
+      console.log(`[telegram] Responded to voice message (${result.text.length} chars)`);
+
+    } catch (err) {
+      console.error('[telegram] Error handling voice message:', err);
+      await ctx.reply('Sorry, I encountered an error processing your voice message. Please try again.');
+    }
+  });
+
   bot.on('message:document', async (ctx) => {
     const doc = ctx.message.document;
     const caption = ctx.message.caption || '';
 
     console.log(`[telegram] Received document: ${doc.file_name} (${doc.mime_type})`);
+    channelRegistry.updateActivity('telegram');
     await ctx.replyWithChatAction('typing');
 
     try {
@@ -208,6 +379,7 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
     const photos = ctx.message.photo;
     const largest = photos[photos.length - 1];
     console.log(`[telegram] Received photo (${largest.width}x${largest.height})`);
+    channelRegistry.updateActivity('telegram');
     await ctx.replyWithChatAction('typing');
 
     try {
@@ -343,6 +515,10 @@ export async function sendToOwner(message: string): Promise<boolean> {
     console.error('[telegram] Failed to send to owner:', err);
     return false;
   }
+}
+
+export function getTelegramBot(): Bot | null {
+  return bot;
 }
 
 export function stopTelegram(): void {

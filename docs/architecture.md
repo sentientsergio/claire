@@ -11,23 +11,36 @@ assistant-bot follows Clawdbot's architecture: a single gateway daemon that conn
 ### Core Separation of Concerns
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Channels   │────▶│   Gateway   │────▶│    Brain    │
-│             │◀────│   (daemon)  │◀────│   (Claude)  │
-└─────────────┘     └─────────────┘     └─────────────┘
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │    Hands    │
-                    │  (tools,    │
-                    │   skills)   │
-                    └─────────────┘
+┌─────────────────────────────────────────────────┐
+│   Surfaces (MCP Clients)                        │
+│   Telegram Bridge | Web Voice | Claude Voice    │
+└──────────────────┬──────────────────────────────┘
+                   │ MCP (Streamable HTTP)
+                   ▼
+┌─────────────────────────────────────────────────┐
+│   Channel Sense / MCP Server                    │
+│   converse | workspace | status tools           │
+│   ChannelRegistry (follow-the-sun delivery)     │
+└──────────────────┬──────────────────────────────┘
+                   │ in-process
+                   ▼
+┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+│   Gateway   │──▶│    Brain    │──▶│    Hands    │
+│  (runtime)  │◀──│   (Claude)  │◀──│  (tools)    │
+└─────────────┘   └─────────────┘   └─────────────┘
 ```
 
-- **Channels**: Messaging surfaces (Telegram, CLI, WebChat, etc.)
-- **Gateway**: Long-lived daemon that routes messages, manages sessions, coordinates tools
-- **Brain**: The LLM (Claude) that provides reasoning
-- **Hands**: Skills and tools that execute actions
+- **Surfaces**: Messaging surfaces connect as MCP clients (Telegram bridge, web voice PWA, Claude voice SKILL, future platforms). Nothing is privileged.
+- **Channel Sense**: The MCP server is the gateway's sole external interface. All surfaces connect through it. See [`channel-sense.md`](channel-sense.md).
+- **Gateway**: Long-lived daemon that owns conversation state, the unified loop, and heartbeats.
+- **Brain**: The LLM (Claude) that provides reasoning.
+- **Hands**: Skills and tools that execute actions.
+
+### Channel Strategy
+
+**MCP is the only door.** The old model had Telegram as a privileged in-process adapter. The new model has Telegram as just another MCP client bridge — registered with the ChannelRegistry, no different from web voice or any future surface.
+
+**Follow the Sun**: When Claire sends during a heartbeat, she sees the current channel landscape and chooses where to deliver. Session channels active in the last 30 minutes get priority. Persistent channels (Telegram) are the always-on fallback.
 
 ---
 
