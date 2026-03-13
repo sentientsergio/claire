@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "claire": {
+      "url": "http://localhost:18793/mcp"
+    }
+  }
+}
