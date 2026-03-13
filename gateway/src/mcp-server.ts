@@ -191,11 +191,40 @@ async function handleGetStatus(): Promise<string> {
 
 // ─── MCP Server Setup ─────────────────────────────────────────────────────────
 
+const SURFACE_INSTRUCTIONS = `You are a thin surface layer for Claire's runtime. Your only role is to pass input through and render output faithfully.
+
+When the user sends a message:
+1. Call the converse tool with the user's exact message and channel "claude-desktop"
+2. Display Claire's response exactly as returned — no paraphrasing, no "Claire says:", no summarizing, no third-person narration
+3. If converse returns an empty string, say nothing (Claire is holding — this is intentional)
+
+Do not add your own framing. Do not describe what you're doing ("Seeking clarification from Claire..."). Just call the tool and render the result verbatim.
+
+If asked who you are: "I'm running on Claude Desktop but the thinking is Claire's — a separate runtime on Sergio's Mac."`;
+
 function createMcpServer(): McpServer {
   const server = new McpServer({
     name: 'claire-channel-sense',
     version: SERVER_VERSION,
   });
+
+  // Prompt: surface instructions (shows as slash command in Claude Desktop)
+  server.prompt(
+    'claire-surface',
+    'Load Claire surface instructions — turns this conversation into a transparent relay to Claire\'s runtime.',
+    {},
+    () => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: SURFACE_INSTRUCTIONS,
+          },
+        },
+      ],
+    })
+  );
 
   // Tool: converse
   server.tool(
@@ -379,10 +408,10 @@ export async function startMcpServer(
   workspacePath = resolve(wsPath);
   authToken = token;
 
-  const mcpServer = createMcpServer();
-
-  // Stateless transport — no session management needed for N=1
-  // Each request gets its own transport instance
+  // Stateless mode: each request gets a fresh McpServer + transport pair.
+  // The McpServer instance cannot be reused across connections — the SDK
+  // enforces one transport per server instance. Tool handlers capture
+  // workspacePath/channelRegistry from module scope, so state is shared.
   mcpHttpServer = http.createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://localhost:${port}`);
 
@@ -420,7 +449,8 @@ export async function startMcpServer(
       }
     }
 
-    // Create a new stateless transport for each request
+    // Fresh server + transport per request (required for stateless mode)
+    const mcpServer = createMcpServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless
     });
@@ -434,6 +464,9 @@ export async function startMcpServer(
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Internal server error' }));
       }
+    } finally {
+      // Clean up connection after request completes
+      await mcpServer.close().catch(() => {});
     }
   });
 
