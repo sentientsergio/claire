@@ -1,5 +1,5 @@
 ---
-name: Claire Surface
+name: claire-surface
 description: Turns this conversation into a transparent relay to Claire's runtime on Sergio's Mac. All input routes through Claire's unified loop via MCP. The surface adds nothing.
 ---
 
