@@ -13,6 +13,7 @@ import {
   listScheduledHeartbeats,
   removeHeartbeat,
 } from '../scheduled-heartbeats.js';
+import { getTokenUsage } from '../conversation-state.js';
 
 /**
  * Resolve a path safely within the workspace
@@ -190,6 +191,35 @@ export async function cancelHeartbeat(id: string): Promise<string> {
 }
 
 /**
+ * Return a human-readable context utilization summary.
+ */
+export function getContextUtilization(): string {
+  const { inputTokens, threshold, utilizationPct, compacted } = getTokenUsage();
+
+  if (inputTokens === 0) {
+    return 'Context utilization unknown — no API call tracked yet this session.';
+  }
+
+  const bar = utilizationPct >= 90
+    ? 'CRITICAL'
+    : utilizationPct >= 70
+    ? 'HIGH'
+    : utilizationPct >= 40
+    ? 'MODERATE'
+    : 'LOW';
+
+  const compactionNote = compacted
+    ? ' Compaction has fired at least once this session — some earlier context has been summarized.'
+    : ' No compaction this session.';
+
+  const advice = utilizationPct >= 70
+    ? ' Consider writing a memory checkpoint now.'
+    : '';
+
+  return `Context: ${inputTokens.toLocaleString()} / ${threshold.toLocaleString()} tokens (${utilizationPct}% — ${bar}).${compactionNote}${advice}`;
+}
+
+/**
  * Get tool definitions for the Anthropic API
  */
 export function getToolDefinitions(): Anthropic.Tool[] {
@@ -288,6 +318,15 @@ export function getToolDefinitions(): Anthropic.Tool[] {
     {
       name: 'get_time',
       description: 'Get the current date and time. Use this when you need to know the precise current time — the system prompt timestamp may be up to 10 minutes stale within a long session.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {},
+        required: [],
+      },
+    },
+    {
+      name: 'get_context_utilization',
+      description: 'Check how full your context window is. Returns current token usage, threshold, and utilization percentage. Call this when you want to know if you should write a memory checkpoint before compaction fires.',
       input_schema: {
         type: 'object' as const,
         properties: {},

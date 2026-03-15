@@ -25,9 +25,9 @@ import {
   addMessage,
   hasContactTodayAnyChannel,
 } from './conversation.js';
-import { resolve } from 'path';
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { resolve, join } from 'path';
+import { readFile, writeFile } from 'fs/promises';
+import { writeCheckpoint as _writeCheckpoint } from './checkpoint.js';
 import {
   appendUserMessage,
   getMessageCount,
@@ -36,6 +36,7 @@ import {
   enqueueTurn,
   persistState,
   pruneMessages,
+  getTokenUsage,
 } from './conversation-state.js';
 import { channelRegistry } from './channel-registry.js';
 
@@ -125,49 +126,10 @@ function isFirstHeartbeatAfterSleep(): boolean {
 
 /**
  * Write a mid-day checkpoint of recent conversation to the daily memory file.
- * Protects against compaction data loss by ensuring the daily log has recent context.
+ * Delegates to shared checkpoint module.
  */
 async function writeCheckpoint(workspacePath: string): Promise<void> {
-  try {
-    const absolutePath = resolve(workspacePath);
-    const log = await loadConversationLog(absolutePath);
-    const recentMessages = getRecentMessages(log, { withinHours: 4, limit: 20 });
-
-    if (recentMessages.length === 0) return;
-
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    const memoryDir = join(absolutePath, 'memory');
-    const filePath = join(memoryDir, `${today}.md`);
-
-    await mkdir(memoryDir, { recursive: true });
-
-    let existing = '';
-    try {
-      existing = await readFile(filePath, 'utf-8');
-    } catch {
-      // File doesn't exist yet
-    }
-
-    const checkpointMarker = `\n\n---\n_Checkpoint at ${time}_\n`;
-
-    if (existing.includes(`Checkpoint at ${time}`)) return;
-
-    const summaryLines: string[] = [];
-    for (const msg of recentMessages.slice(-10)) {
-      const msgTime = new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      const role = msg.role === 'user' ? 'Sergio' : 'Claire';
-      const preview = msg.content.length > 120 ? msg.content.slice(0, 120) + '...' : msg.content;
-      summaryLines.push(`- ${msgTime} ${role}: ${preview}`);
-    }
-
-    const checkpoint = checkpointMarker + summaryLines.join('\n') + '\n';
-    await writeFile(filePath, existing + checkpoint, 'utf-8');
-    console.log(`  Checkpoint written to memory/${today}.md (${recentMessages.length} recent messages)`);
-  } catch (err) {
-    console.error('  Checkpoint write failed:', err);
-  }
+  await _writeCheckpoint(workspacePath);
 }
 
 /**
@@ -196,7 +158,12 @@ async function performHeartbeat(workspacePath: string): Promise<void> {
 
     const channelStatus = channelRegistry.getChannelStatusText();
 
-    let triggerText = `[System: heartbeat tick at ${time}. ${channelStatus}`;
+    const tokenUsage = getTokenUsage();
+    const contextNote = tokenUsage.inputTokens > 0
+      ? ` Context: ${tokenUsage.utilizationPct}% (${tokenUsage.inputTokens.toLocaleString()}/${tokenUsage.threshold.toLocaleString()} tokens).`
+      : '';
+
+    let triggerText = `[System: heartbeat tick at ${time}. ${channelStatus}${contextNote}`;
 
     if (isFirstHeartbeatAfterSleep()) {
       triggerText += ' You are waking up. This is your first heartbeat of the day — you have been asleep since midnight.'
@@ -377,13 +344,39 @@ Write this document FOR YOURSELF — it's what you'll read in 30 seconds at sess
 
 After writing, use file_write to save it to handoff/YYYY-MM-DD.md where YYYY-MM-DD is TODAY's date.`;
 
+async function writeHandoffStatus(
+  workspacePath: string,
+  success: boolean,
+  handoffFile: string,
+  errorMessage?: string
+): Promise<void> {
+  const statusPath = join(resolve(workspacePath), 'status.json');
+  try {
+    const raw = await readFile(statusPath, 'utf-8');
+    const status = JSON.parse(raw);
+    status.last_handoff = {
+      timestamp: new Date().toISOString(),
+      file: handoffFile,
+      success,
+      ...(errorMessage ? { error: errorMessage } : {}),
+    };
+    await writeFile(statusPath, JSON.stringify(status, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('  Failed to write handoff status to status.json:', err);
+  }
+}
+
 async function performHandoff(workspacePath: string): Promise<void> {
   console.log(`[${new Date().toISOString()}] Handoff document generation started`);
+
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const handoffFile = `handoff/${today}.md`;
+
   try {
     const systemPromptBlocks = await getSystemPrompt(workspacePath);
     let systemPromptText = systemPromptBlocks.map(b => b.text).join('\n');
 
-    const { resolve } = await import('path');
     const absolutePath = resolve(workspacePath);
     const log = await loadConversationLog(absolutePath);
     const todayMessages = getRecentMessages(log, { withinHours: 24, limit: 50 });
@@ -403,8 +396,10 @@ async function performHandoff(workspacePath: string): Promise<void> {
 
     const response = await sonnetMaintenanceChat(HANDOFF_PROMPT, systemPromptText, workspacePath);
     console.log(`  Handoff document complete (${response.length} chars). File write handled via tools.`);
+    await writeHandoffStatus(workspacePath, true, handoffFile);
   } catch (err) {
     console.error('  Handoff generation error:', err);
+    await writeHandoffStatus(workspacePath, false, handoffFile, String(err));
   }
 }
 

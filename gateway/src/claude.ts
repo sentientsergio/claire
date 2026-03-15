@@ -12,6 +12,7 @@ import {
   fileWrite,
   fileList,
   getCurrentTime,
+  getContextUtilization,
   getToolDefinitions,
   scheduleHeartbeat,
   listHeartbeats,
@@ -40,7 +41,10 @@ import {
   appendAssistantResponse,
   appendRawMessage,
   persistState,
+  updateTokenUsage,
+  getTokenUsage,
 } from './conversation-state.js';
+import { maybeAutoCheckpoint } from './checkpoint.js';
 import { getSystemPrompt, loadCompactionInstructions } from './workspace.js';
 
 let client: Anthropic | null = null;
@@ -117,6 +121,8 @@ async function executeTool(name: string, toolInput: ToolInput, workspacePath: st
       return await executeUpdateStatus(workspacePath, toolInput.updates || {});
     case 'get_time':
       return getCurrentTime();
+    case 'get_context_utilization':
+      return getContextUtilization();
     case 'fetch_image': {
       const result = await fetchImage(toolInput.id || '');
       if (result.available) {
@@ -199,6 +205,7 @@ export async function chat(
     const toolUses: Array<{ id: string; name: string; input: unknown }> = [];
     const assistantContent = response.content;
     let turnText = '';
+    let compactionThisTurn = false;
 
     for (const block of assistantContent) {
       if (block.type === 'text') {
@@ -207,8 +214,12 @@ export async function chat(
         toolUses.push({ id: block.id, name: block.name, input: block.input });
       } else if ((block as { type: string }).type === 'compaction') {
         console.log('[chat] Compaction triggered this turn');
+        compactionThisTurn = true;
       }
     }
+
+    updateTokenUsage(response.usage.input_tokens, compactionThisTurn);
+    await maybeAutoCheckpoint(getTokenUsage().utilizationPct, workspacePath);
 
     if (turnText.trim()) {
       lastNonEmptyText = turnText;
@@ -280,6 +291,7 @@ export async function chatStreaming(
     const finalMessage = await stream.finalMessage();
 
     const toolUses: Array<{ id: string; name: string; input: unknown }> = [];
+    let compactionThisTurn = false;
 
     for (const block of finalMessage.content) {
       if (block.type === 'tool_use') {
@@ -287,8 +299,12 @@ export async function chatStreaming(
         toolUses.push({ id: block.id, name: block.name, input: block.input });
       } else if ((block as { type: string }).type === 'compaction') {
         console.log('[chat] Compaction triggered this turn');
+        compactionThisTurn = true;
       }
     }
+
+    updateTokenUsage(finalMessage.usage.input_tokens, compactionThisTurn);
+    await maybeAutoCheckpoint(getTokenUsage().utilizationPct, workspacePath);
 
     if (currentText.trim()) {
       lastNonEmptyText = currentText;

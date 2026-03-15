@@ -26,6 +26,11 @@ let turnQueue: Promise<void> = Promise.resolve();
 let pendingUserMessages: Array<{ content: string; timestamp: number }> = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Context utilization tracking — updated after each API call
+let lastInputTokens: number = 0;
+let compactionDetectedThisSession: boolean = false;
+const COMPACTION_TRIGGER_TOKENS = 80_000;
+
 /**
  * Initialize the conversation state, reloading from disk if available.
  */
@@ -242,6 +247,36 @@ export function pruneMessages(keepCount: number): number {
   messages = messages.slice(-keepCount);
   console.log(`[conversation-state] Pruned ${removed} messages, retained last ${keepCount}`);
   return removed;
+}
+
+/**
+ * Update context utilization after an API call completes.
+ * Called by chat() and chatStreaming() with the response's input_tokens.
+ */
+export function updateTokenUsage(inputTokens: number, compacted: boolean): void {
+  lastInputTokens = inputTokens;
+  if (compacted) {
+    compactionDetectedThisSession = true;
+  }
+}
+
+/**
+ * Get current context utilization — how full the context window is.
+ */
+export function getTokenUsage(): {
+  inputTokens: number;
+  threshold: number;
+  utilizationPct: number;
+  compacted: boolean;
+} {
+  return {
+    inputTokens: lastInputTokens,
+    threshold: COMPACTION_TRIGGER_TOKENS,
+    utilizationPct: lastInputTokens > 0
+      ? Math.round((lastInputTokens / COMPACTION_TRIGGER_TOKENS) * 1000) / 10
+      : 0,
+    compacted: compactionDetectedThisSession,
+  };
 }
 
 /**
