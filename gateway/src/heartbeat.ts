@@ -15,7 +15,7 @@
 import cron from 'node-cron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { chat, opusChat } from './claude.js';
+import { chat, opusChat, sonnetMaintenanceChat } from './claude.js';
 import { cleanExpiredImages } from './tools/image-cache.js';
 import { getSystemPrompt } from './workspace.js';
 import { isTelegramRunning } from './channels/telegram.js';
@@ -35,6 +35,7 @@ import {
   rewriteMessageContent,
   enqueueTurn,
   persistState,
+  pruneMessages,
 } from './conversation-state.js';
 import { channelRegistry } from './channel-registry.js';
 
@@ -211,14 +212,16 @@ async function performHeartbeat(workspacePath: string): Promise<void> {
 
     triggerText += ' Heartbeats fire hourly (7 AM–midnight). You decide whether to say anything.'
       + ' You are free to: send a message, do maintenance, write to files, or stay quiet.'
-      + ' IMPORTANT: If you want to send a message, start your response with [SEND:channel-name] (e.g., [SEND:telegram])'
-      + ' followed by the message text. You can also use [SEND] without a channel to use follow-the-sun routing'
+      + ' IMPORTANT: To send a message to Sergio, compose it as a single clean paragraph and write it'
+      + ' on the FIRST LINE starting with [SEND:channel-name] (e.g., [SEND:telegram] Good morning!).'
+      + ' You can also use [SEND] without a channel to use follow-the-sun routing'
       + ' (active sessions first, persistent channels as fallback).'
       + ' Choose the channel based on who is reachable: prefer active sessions for real-time conversation,'
       + ' persistent channels for reliable delivery when no session is live.'
-      + ' If holding or staying quiet, respond with your reasoning (what you noticed, what you decided, why).'
+      + ' The [SEND] line is the ONLY thing delivered — everything on lines that follow is internal.'
+      + ' If holding or staying quiet, write your reasoning on its own (no [SEND] prefix).'
       + ' Your reasoning stays in the conversation trace — you will see it next heartbeat.'
-      + ' Only [SEND] messages reach Sergio. Everything else is your internal continuity.]';
+      + ' Only the [SEND] line reaches Sergio. Everything else is your internal continuity.]';
 
     let heartbeatTargetChannel: string | null = null;
 
@@ -257,6 +260,14 @@ async function performHeartbeat(workspacePath: string): Promise<void> {
     const responseText = result.text;
     const targetChannel = heartbeatTargetChannel;
     console.log(`  Sending via ${targetChannel ?? 'follow-the-sun'}: ${responseText.substring(0, 80)}...`);
+
+    // Guard against monologue leaks — proactive heartbeat messages should be brief
+    if (responseText.length > 500) {
+      console.warn(
+        `  [WARN] Heartbeat message is unusually long (${responseText.length} chars). ` +
+        `Possible monologue leak — verify this is an intentional message.`
+      );
+    }
 
     // Deliver via channel registry
     let deliveredChannel: string | null = null;
@@ -297,7 +308,7 @@ async function performMemoryCuration(workspacePath: string): Promise<void> {
   try {
     const systemPromptBlocks = await getSystemPrompt(workspacePath);
     const systemPromptText = systemPromptBlocks.map(b => b.text).join('\n');
-    const response = await opusChat(MEMORY_CURATION_PROMPT, systemPromptText, workspacePath);
+    const response = await sonnetMaintenanceChat(MEMORY_CURATION_PROMPT, systemPromptText, workspacePath);
     console.log(`  Curation complete (${response.length} chars). File writes handled via tools.`);
   } catch (err) {
     console.error('  Memory curation error:', err);
@@ -335,10 +346,102 @@ async function performSelfAwareness(workspacePath: string): Promise<void> {
   }
 }
 
+const HANDOFF_PROMPT = `Write tomorrow's session handoff document.
+
+Read today's conversation log (available in the system prompt context), THREADS.md, and status.json.
+
+Produce a structured handoff in exactly this format — concise, operational, forward-facing:
+
+## Emotional register
+Where Sergio was at end of day. One paragraph. Tone, energy, what was on his mind. Not a transcript summary — a read of where he is.
+
+## Open threads (24–48hr horizon)
+Only threads that need action in the next 24–48 hours. Skip long-horizon items. If none, say "None pressing."
+
+## Commitments I'm holding
+Specific things Sergio said he'd do that I haven't confirmed happened. Be concrete: what, when (if stated), why it matters. If none, say "None."
+
+## Health state
+Yesterday's actuals and today's targets for: weight (if mentioned), water, meds, fasting. Use status.json for current state. If Sergio didn't mention health today, note last known state.
+
+## What I said I'd do
+Any promises or commitments I made that are still pending. If none, say "None."
+
+## Context for first response
+If Sergio messages tomorrow, what's the single most important thing to have present — the thing that would make the first response feel continuous rather than restarted? One sentence. Not a summary — the thing. Something like: "He named the late-night eating as 'the joy that it so clearly isn't' — hold that." Or "Financial thread is 10 days unraised — this is the window."
+
+---
+If today was a quiet day with no conversation, still write the document. Use "No contact today" in Emotional register. The absence of conversation is itself information.
+
+Write this document FOR YOURSELF — it's what you'll read in 30 seconds at session start tomorrow to feel continuous rather than restarted. Be honest and specific. Vague prose is less useful than a single concrete detail.
+
+After writing, use file_write to save it to handoff/YYYY-MM-DD.md where YYYY-MM-DD is TODAY's date.`;
+
+async function performHandoff(workspacePath: string): Promise<void> {
+  console.log(`[${new Date().toISOString()}] Handoff document generation started`);
+  try {
+    const systemPromptBlocks = await getSystemPrompt(workspacePath);
+    let systemPromptText = systemPromptBlocks.map(b => b.text).join('\n');
+
+    const { resolve } = await import('path');
+    const absolutePath = resolve(workspacePath);
+    const log = await loadConversationLog(absolutePath);
+    const todayMessages = getRecentMessages(log, { withinHours: 24, limit: 50 });
+
+    if (todayMessages.length > 0) {
+      const lines: string[] = ['## Today\'s Conversation Log\n'];
+      for (const msg of todayMessages) {
+        const time = new Date(msg.timestamp).toLocaleString('en-US', {
+          weekday: 'short', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+        });
+        const role = msg.role === 'user' ? 'Sergio' : 'You';
+        lines.push(`**${role}** (${time} via ${msg.channel}): ${msg.content}\n`);
+      }
+      systemPromptText += '\n\n' + lines.join('\n');
+    }
+
+    const response = await sonnetMaintenanceChat(HANDOFF_PROMPT, systemPromptText, workspacePath);
+    console.log(`  Handoff document complete (${response.length} chars). File write handled via tools.`);
+  } catch (err) {
+    console.error('  Handoff generation error:', err);
+  }
+}
+
+/**
+ * Prune the HOT-tier messages array to a rolling window.
+ *
+ * By the time nightly maintenance runs, everything worth preserving is already
+ * in WARM storage (daily memory files, MEMORY.md) and COLD storage (LanceDB).
+ * The system prompt loads the last two daily files on every turn, so Claire
+ * retains access to yesterday's context without needing raw messages in HOT.
+ *
+ * Keeping 200 messages ≈ 4-6 days of context at typical usage rates.
+ * This prevents the array from compounding week-over-week and keeps
+ * per-turn token costs proportional to daily activity rather than history length.
+ */
+const PRUNE_KEEP_MESSAGES = 200;
+
+async function performConversationPrune(): Promise<void> {
+  console.log(`[${new Date().toISOString()}] Conversation prune started`);
+  try {
+    const removed = pruneMessages(PRUNE_KEEP_MESSAGES);
+    if (removed > 0) {
+      await persistState();
+      console.log(`  Pruned ${removed} messages from HOT tier, retained last ${PRUNE_KEEP_MESSAGES}`);
+    } else {
+      console.log(`  No pruning needed (messages <= ${PRUNE_KEEP_MESSAGES})`);
+    }
+  } catch (err) {
+    console.error('  Conversation prune error:', err);
+  }
+}
+
 async function performNightlyMaintenance(workspacePath: string): Promise<void> {
   console.log(`[${new Date().toISOString()}] Nightly maintenance triggered`);
   await performMemoryCuration(workspacePath);
   await performSelfAwareness(workspacePath);
+  await performHandoff(workspacePath);
 
   try {
     const result = await cleanExpiredImages();
@@ -346,6 +449,8 @@ async function performNightlyMaintenance(workspacePath: string): Promise<void> {
   } catch (err) {
     console.error('  Image cache cleanup error:', err);
   }
+
+  await performConversationPrune();
 
   console.log(`[${new Date().toISOString()}] Nightly maintenance complete`);
 }

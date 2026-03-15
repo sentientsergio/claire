@@ -232,6 +232,19 @@ export function getRecentMessagesFromState(limit: number = 10): MessageParam[] {
 }
 
 /**
+ * Prune the messages array, keeping only the most recent `keepCount` messages.
+ * Called during nightly maintenance after daily files have captured older context.
+ * Returns the number of messages removed.
+ */
+export function pruneMessages(keepCount: number): number {
+  if (messages.length <= keepCount) return 0;
+  const removed = messages.length - keepCount;
+  messages = messages.slice(-keepCount);
+  console.log(`[conversation-state] Pruned ${removed} messages, retained last ${keepCount}`);
+  return removed;
+}
+
+/**
  * Get the text content of the last assistant message (for logging).
  */
 export function getLastAssistantText(): string | null {

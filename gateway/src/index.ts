@@ -18,7 +18,7 @@ import { startTelegram, stopTelegram } from './channels/telegram.js';
 import { initScheduledHeartbeats } from './scheduled-heartbeats.js';
 import { startWebhookServer, registerDefaultHandler } from './webhook.js';
 import { initMemoryStore, initFactsStore } from './memory/index.js';
-import { initConversationState } from './conversation-state.js';
+import { initConversationState, getMessageCount, pruneMessages, persistState } from './conversation-state.js';
 import { startHealthMonitoring } from './health.js';
 import { initImageCache } from './tools/image-cache.js';
 import { startMcpServer, stopMcpServer } from './mcp-server.js';
@@ -40,7 +40,17 @@ async function main() {
   // Initialize unified conversation state (reload from disk)
   try {
     await initConversationState(resolve(WORKSPACE_PATH));
-    console.log('  Conversation state: initialized');
+    const msgCount = getMessageCount();
+    console.log(`  Conversation state: initialized (${msgCount} messages)`);
+
+    // Prune HOT tier on startup if it exceeds the rolling window.
+    // Older messages are already in daily files (WARM) and LanceDB (COLD).
+    const STARTUP_PRUNE_THRESHOLD = 200;
+    if (msgCount > STARTUP_PRUNE_THRESHOLD) {
+      const removed = pruneMessages(STARTUP_PRUNE_THRESHOLD);
+      await persistState();
+      console.log(`  Conversation state: pruned ${removed} stale messages on startup, retained last ${STARTUP_PRUNE_THRESHOLD}`);
+    }
   } catch (err) {
     console.error('  Conversation state: failed to initialize', err);
   }

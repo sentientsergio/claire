@@ -341,6 +341,80 @@ export async function simpleChat(
 }
 
 /**
+ * Non-streaming Sonnet chat with tool access for nightly maintenance tasks
+ * (memory curation, handoff). Uses a SEPARATE messages array.
+ * Same interface as opusChat but uses the cheaper Sonnet model — appropriate
+ * for mechanical read-distill-write tasks that don't require deep reasoning.
+ */
+export async function sonnetMaintenanceChat(
+  userMessage: string,
+  systemPrompt: string,
+  workspacePath: string,
+  options: { readOnly?: boolean } = {}
+): Promise<string> {
+  console.log(`[chat] Using sonnet-maintenance (${SONNET_MODEL})`);
+
+  const messages: Anthropic.MessageParam[] = [
+    { role: 'user', content: userMessage }
+  ];
+
+  let lastNonEmptyText = '';
+
+  while (true) {
+    const response = await getClient().messages.create({
+      model: SONNET_MODEL,
+      max_tokens: MAX_TOKENS,
+      system: systemPrompt,
+      messages,
+      tools: options.readOnly ? getReadOnlyTools() : getAllTools(),
+    });
+
+    const toolUses: Array<{ id: string; name: string; input: unknown }> = [];
+    const assistantContent: Anthropic.ContentBlock[] = [];
+    let turnText = '';
+
+    for (const block of response.content) {
+      if (block.type === 'text') {
+        turnText += block.text;
+        assistantContent.push(block);
+      } else if (block.type === 'tool_use') {
+        toolUses.push({ id: block.id, name: block.name, input: block.input });
+        assistantContent.push(block);
+      }
+    }
+
+    if (turnText.trim()) {
+      lastNonEmptyText = turnText;
+    }
+
+    if (toolUses.length === 0) {
+      return turnText.trim() ? turnText : lastNonEmptyText;
+    }
+
+    const toolResults: Array<{ tool_use_id: string; content: ToolResult }> = [];
+    for (const toolUse of toolUses) {
+      const toolInput = toolUse.input as ToolInput;
+      let toolResult: ToolResult;
+      try {
+        toolResult = await executeTool(toolUse.name, toolInput, workspacePath);
+      } catch (err) {
+        toolResult = `Error: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      }
+      toolResults.push({ tool_use_id: toolUse.id, content: toolResult });
+      console.log(`[sonnet-maintenance] Tool ${toolUse.name} executed`);
+    }
+
+    messages.push({ role: 'assistant', content: assistantContent });
+    messages.push({
+      role: 'user',
+      content: toolResults.map(r => ({
+        type: 'tool_result' as const, tool_use_id: r.tool_use_id, content: r.content,
+      })),
+    });
+  }
+}
+
+/**
  * Non-streaming Opus chat with tool access for nightly reflective tasks.
  * Uses a SEPARATE messages array (not the main conversation).
  */

@@ -224,18 +224,25 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
         return;
       }
 
+      // Strip any accidental [SEND] / [SEND:channel] prefix that leaked from heartbeat conventions
+      const sendArtifact = result.text.match(/^\[SEND(?::[^\]]+)?\]\s*/);
+      const cleanText = sendArtifact ? result.text.slice(sendArtifact[0].length) : result.text;
+      if (sendArtifact) {
+        console.warn('[telegram] Stripped accidental [SEND] artifact from conversational response');
+      }
+
       const showThinking = await getShowThinking(workspacePath);
       let fullResponse: string;
       if (showThinking && result.thinking) {
-        fullResponse = `<thinking>\n${result.thinking}\n</thinking>\n\n${result.text}`;
+        fullResponse = `<thinking>\n${result.thinking}\n</thinking>\n\n${cleanText}`;
       } else {
-        fullResponse = result.text;
+        fullResponse = cleanText;
       }
 
-      await addMessage(workspacePath, 'telegram', 'assistant', result.text);
+      await addMessage(workspacePath, 'telegram', 'assistant', cleanText);
 
       if (isMemoryInitialized()) {
-        storeExchange(userMessage, result.text, 'telegram').catch(err => {
+        storeExchange(userMessage, cleanText, 'telegram').catch(err => {
           console.error('[telegram] Failed to store exchange in memory:', err);
         });
       }

@@ -103,10 +103,12 @@ export async function extractFacts(
   assistantResponse: string,
   sourceChunkId: string
 ): Promise<FactCandidate[]> {
-  // Get existing facts for context
-  const existingFacts = await getAllFacts();
-  const existingFactsContext = existingFacts.length > 0
-    ? `\nExisting known facts:\n${existingFacts.map(f => `- [${f.id}] ${f.content}`).join('\n')}`
+  // Fetch only semantically relevant facts rather than all facts.
+  // Sending the full facts table on every call was the primary Haiku cost driver.
+  const queryText = `${userMessage} ${assistantResponse}`.slice(0, 500);
+  const relevantFacts = isFactsInitialized() ? await findSimilarFacts(queryText, 20) : [];
+  const existingFactsContext = relevantFacts.length > 0
+    ? `\nExisting known facts (most relevant to this exchange):\n${relevantFacts.map(f => `- [${f.id}] ${f.content}`).join('\n')}`
     : '\nNo existing facts yet.';
 
   const prompt = `Analyze this conversation exchange and extract any facts worth remembering.
