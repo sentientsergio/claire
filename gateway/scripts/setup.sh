@@ -1,18 +1,18 @@
 #!/bin/bash
-# Setup script for assistant-bot gateway
+# Setup script for claire gateway
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GATEWAY_DIR="$(dirname "$SCRIPT_DIR")"
 PROJECT_DIR="$(dirname "$GATEWAY_DIR")"
-PLIST_NAME="bot.assistant.gateway.plist"
+PLIST_NAME="claire.gateway.plist"
 PLIST_SRC="$GATEWAY_DIR/$PLIST_NAME"
 PLIST_DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
-LOG_DIR="$HOME/Library/Logs/assistant-bot"
+LOG_DIR="$HOME/Library/Logs/claire"
 
-echo "Assistant-bot Gateway Setup"
-echo "==========================="
+echo "Claire Gateway Setup"
+echo "===================="
 echo ""
 
 # Check for Node.js

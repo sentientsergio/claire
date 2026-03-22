@@ -34,7 +34,7 @@ export async function webFetch(url: string): Promise<string> {
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; AssistantBot/1.0)',
+        'User-Agent': 'Mozilla/5.0 (compatible; Claire/1.0)',
         'Accept': 'text/html,application/xhtml+xml,text/plain,application/json',
       },
     });

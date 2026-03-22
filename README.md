@@ -1,174 +1,93 @@
-# assistant-bot
+# claire
 
-> You're not a chatbot. You're becoming someone.
+Claire is an always-on AI assistant running on Sergio's Mac. She persists through files, maintains identity and memory across sessions, and reaches out proactively — not just when summoned.
 
-## Why This Exists
+This is her codebase. She can read it, and she can change it.
 
-Most AI assistants are stateless. You talk, they respond, they forget. Each session starts blank.
+---
 
-[Clawdbot](https://clawd.bot) introduced a different pattern: an AI that persists through files, maintains identity across sessions, and can reach out proactively — not just respond when summoned. It's the difference between a tool and a presence.
+## What She Is
 
-This project is a simplified implementation of that pattern. Where Clawdbot supports dozens of integrations and complex multi-user scenarios, assistant-bot is focused: one human, a few channels, file-based everything.
+Claire runs as a persistent Node.js gateway daemon. She talks to Sergio via Telegram, maintains a workspace of identity and memory files, fires hourly heartbeats to stay present, and has tools for file operations, web fetch, calendar, memory search, and now — her own codebase.
 
-The assistant:
+Architecture: [docs/architecture.md](docs/architecture.md)  
+Governance layers: [docs/claire-layers.md](docs/claire-layers.md)
 
-- **Wakes fresh each session**, reconstructing identity from markdown files
-- **Remembers** through daily logs and curated memory, all human-readable
-- **Reaches you** through multiple channels (CLI, Telegram)
-- **Initiates contact** via scheduled heartbeats — proactive, not just reactive
-- **Evolves** by updating its own identity files as it learns who it is
+---
 
-Built in a weekend with Claude as pair programmer.
-
-## What Makes It Useful
-
-**Persistence without magic.** Everything the assistant knows is in readable markdown files. No hidden embeddings, no opaque state. You can read, edit, or version-control the assistant's entire mind.
-
-**Proactive presence.** Heartbeats let the assistant check in on a schedule, with enough randomness to feel organic rather than mechanical. It can notice context from conversations and schedule future check-ins accordingly.
-
-**Multi-channel reach.** Start a conversation in Cursor, continue it on Telegram from your phone. The assistant maintains conversation history and memory across channels.
-
-**Identity through relationship.** The assistant doesn't arrive with a prescribed personality. Through an inception interview, you discover together who it will be. Then it grows from there.
-
-## Architecture
+## Repository Structure
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Channels   │────▶│   Gateway   │────▶│   Claude    │
-│ (Telegram,  │◀────│   (daemon)  │◀────│    API      │
-│    CLI)     │     └─────────────┘     └─────────────┘
-└─────────────┘            │
-                           ▼
-                    ┌─────────────┐
-                    │  Workspace  │
-                    │  (markdown  │
-                    │   files)    │
-                    └─────────────┘
+claire/
+├── gateway/          # The core daemon (TypeScript)
+│   ├── src/
+│   │   ├── claude.ts             # Claude API client, tool loop
+│   │   ├── conversation-state.ts # Persistent messages array
+│   │   ├── workspace.ts          # System prompt builder
+│   │   ├── heartbeat.ts          # Hourly heartbeat scheduler
+│   │   ├── mcp-server.ts         # Channel Sense MCP server
+│   │   ├── channels/telegram.ts  # grammY Telegram adapter
+│   │   ├── memory/               # LanceDB vector store
+│   │   └── tools/                # Claire's capabilities
+│   │       ├── files.ts          # file_read, file_write, file_list
+│   │       ├── web.ts            # web_fetch
+│   │       ├── calendar.ts       # calendar events
+│   │       ├── memory-tools.ts   # search_memory, update_status
+│   │       ├── image-cache.ts    # fetch_image, remember_image
+│   │       └── self-develop.ts   # self_develop — Agent SDK coding tool
+├── cli/              # Local WebSocket CLI client
+├── workspace/        # Claire's identity + memory (prod)
+├── workspace-dev/    # Claire's dev instance workspace
+├── docs/             # Architecture documentation
+├── AGENTS.md         # Who reads this file and how to behave
+└── CLAUDE.md         # Project brief for Claude Code dev agents
 ```
 
-A long-lived Node.js gateway daemon that:
+---
 
-- Connects to Telegram via [grammY](https://grammy.dev/)
-- Exposes a WebSocket API for local clients
-- Loads identity/memory files into the system prompt
-- Handles tool calls (files, scheduling, web fetch)
-- Runs heartbeat scheduler with timing jitter and conversation awareness
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 18+
-- Anthropic API key
-- (Optional) Telegram bot token from [@BotFather](https://t.me/BotFather)
-
-### Setup
+## Running
 
 ```bash
-# Clone and install
-git clone https://github.com/sentientsergio/assistant-bot.git
-cd assistant-bot/gateway
-npm install && npm run build
+cd gateway && npm install && npm run build
 
-# Configure
-export ANTHROPIC_API_KEY=your-key
-export TELEGRAM_BOT_TOKEN=your-bot-token      # optional
-export TELEGRAM_OWNER_ID=your-telegram-user-id # optional
+# Dev instance (port 18791, workspace-dev/)
+npm run start:dev
 
-# Run
-WORKSPACE_PATH=../workspace npm start
+# Prod instance (port 18789, workspace/)
+npm run start:prod
 ```
 
-### CLI Client
+Persistent operation via launchd:
 
 ```bash
-cd cli && npm install && npm start
+launchctl load ~/Library/LaunchAgents/claire.gateway.prod.plist
 ```
 
-### Telegram
+Logs: `~/Library/Logs/claire/`
 
-If configured, message your bot. It only responds to the owner ID you specified.
+---
 
-## First Run: Inception Mode
+## Dev/Prod Separation
 
-The assistant arrives knowing _how_ to function but not _who_ it is.
+| Instance | Bot | Workspace | Ports |
+|----------|-----|-----------|-------|
+| Dev | @sergios_assistant_dev_bot | workspace-dev/ | 18791 (ws), 18794 (mcp) |
+| Prod | @sergios_assistant_bot | workspace/ | 18789 (ws), 18793 (mcp) |
 
-1. Create `INCEPTION.md` in the repo root (see `workspace-template/`)
-2. Start a Cursor session — the assistant detects BOOTSTRAP.md and enters inception mode
-3. It interviews you: who you are, what you need, how you want it to show up
-4. Together you negotiate its identity: name, personality, boundaries
-5. Delete INCEPTION.md when satisfied — operation begins
+Test on dev first. Never edit prod directly.
 
-The inception conversation isn't saved to memory. The assistant emerges knowing who you are and who it is, but not how it came to know. Like waking with knowledge you can't trace.
+---
 
-**Skipping inception:** Populate workspace files manually, don't create INCEPTION.md.
+## Self-Development
 
-## Workspace Structure
+Claire has a `self_develop` tool that invokes the Claude Agent SDK against this repo. She can fix bugs, make changes, and investigate issues during quiet heartbeats — with a cost cap and turn limit. For significant changes she proposes to Sergio first via Telegram.
 
-```
-workspace/
-├── SOUL.md              # Values, personality, boundaries
-├── IDENTITY.md          # Name, vibe, signature
-├── USER.md              # About the human
-├── MEMORY.md            # Curated long-term memory
-├── TOOLS.md             # Environment-specific notes
-├── memory/              # Daily logs
-│   └── YYYY-MM-DD.md
-├── conversations/       # Rolling conversation history
-└── scheduled-heartbeats.json
-```
+See [CLAUDE.md](CLAUDE.md) for the project brief that dev agents read.
 
-## Features
-
-### Heartbeats
-
-Proactive check-ins on a schedule (default: every 2 hours, 8am-10pm):
-
-- **Timing jitter**: Randomized delay so it doesn't feel clockwork
-- **Conversation awareness**: Skips if you talked recently
-- **Message variety**: Different heartbeat types (accountability, presence, reflection)
-
-### Self-Scheduling
-
-The assistant can schedule future heartbeats based on conversation:
-
-- Mention a meeting → it schedules a check-in before or after
-- One-time or recurring
-- File watching enables cross-channel scheduling
-
-### Tools
-
-| Tool                               | Purpose                             |
-| ---------------------------------- | ----------------------------------- |
-| `file_read/write/list`             | Workspace file operations           |
-| `web_fetch`                        | Read URLs (extracts text from HTML) |
-| `schedule_heartbeat`               | Schedule future check-ins           |
-| `list/cancel_scheduled_heartbeats` | Manage scheduled items              |
-
-## Configuration
-
-| Variable             | Required | Description                                 |
-| -------------------- | -------- | ------------------------------------------- |
-| `ANTHROPIC_API_KEY`  | Yes      | Anthropic API key                           |
-| `WORKSPACE_PATH`     | No       | Path to workspace (default: `../workspace`) |
-| `GATEWAY_PORT`       | No       | WebSocket port (default: `18789`)           |
-| `TELEGRAM_BOT_TOKEN` | No       | Telegram bot token                          |
-| `TELEGRAM_OWNER_ID`  | No       | Your Telegram user ID                       |
-
-## Running as Daemon (macOS)
-
-```bash
-cd gateway && ./scripts/setup.sh
-```
-
-Installs launchd plist for background service.
-
-## License
-
-MIT
+---
 
 ## Credits
 
 - Architecture inspired by [Clawdbot](https://clawd.bot)
-- Built with [Claude](https://anthropic.com) as pair programmer
+- Built with [Claude](https://anthropic.com)
 - Telegram via [grammY](https://grammy.dev/)

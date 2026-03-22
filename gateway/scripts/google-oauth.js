@@ -105,7 +105,7 @@ const server = http.createServer(async (req, res) => {
     
     if (!tokens.refresh_token) {
       console.log('⚠️  No refresh token received. This can happen if you already authorized this app.');
-      console.log('   Go to https://myaccount.google.com/permissions and remove "assistant-bot"');
+      console.log('   Go to https://myaccount.google.com/permissions and remove "claire"');
       console.log('   Then run this script again.');
     }
     

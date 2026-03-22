@@ -3,25 +3,25 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>bot.assistant.gateway.dev</string>
+    <string>claire.gateway.prod</string>
     
     <key>ProgramArguments</key>
     <array>
         <string>/opt/homebrew/bin/node</string>
-        <string>/Users/sergio/sentientsergio/assistant-bot/gateway/dist/index.js</string>
+        <string>/Users/sergio/sentientsergio/claire/gateway/dist/index.js</string>
     </array>
     
     <key>WorkingDirectory</key>
-    <string>/Users/sergio/sentientsergio/assistant-bot/gateway</string>
+    <string>/Users/sergio/sentientsergio/claire/gateway</string>
     
     <key>EnvironmentVariables</key>
     <dict>
         <key>NODE_ENV</key>
-        <string>development</string>
+        <string>production</string>
     </dict>
     
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
     
     <key>KeepAlive</key>
     <dict>
@@ -30,10 +30,10 @@
     </dict>
     
     <key>StandardOutPath</key>
-    <string>/Users/sergio/Library/Logs/assistant-bot/gateway.dev.log</string>
+    <string>/Users/sergio/Library/Logs/claire/gateway.prod.log</string>
     
     <key>StandardErrorPath</key>
-    <string>/Users/sergio/Library/Logs/assistant-bot/gateway.dev.error.log</string>
+    <string>/Users/sergio/Library/Logs/claire/gateway.prod.error.log</string>
     
     <key>ThrottleInterval</key>
     <integer>10</integer>

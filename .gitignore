@@ -7,6 +7,9 @@
 # INCEPTION.md at root (indicates inception in progress)
 /INCEPTION.md
 
+# Runtime state — written by Claude Code on startup, read by self_develop
+.claude-session.json
+
 # OS files
 .DS_Store
 

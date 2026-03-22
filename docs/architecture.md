@@ -1,12 +1,12 @@
 # Architecture Reference
 
-_Comprehensive Clawdbot patterns adapted for assistant-bot, with our simplifications noted._
+_Comprehensive Clawdbot patterns adapted for claire, with our simplifications noted._
 
 ---
 
 ## Overview
 
-assistant-bot follows Clawdbot's architecture: a single gateway daemon that connects messaging channels to an AI model, with file-based identity and memory. The assistant lives in a workspace directory where markdown files define who it is and what it remembers.
+claire follows Clawdbot's architecture: a single gateway daemon that connects messaging channels to an AI model, with file-based identity and memory. The assistant lives in a workspace directory where markdown files define who it is and what it remembers.
 
 ### Core Separation of Concerns
 
@@ -107,7 +107,7 @@ Client                    Gateway
 
 ### MVP Simplifications
 
-| Clawdbot | assistant-bot MVP |
+| Clawdbot | claire MVP |
 |----------|-------------------|
 | 15+ channel adapters | Three channels: CLI, WebChat, Telegram |
 | Device pairing with tokens | Single user, local access |
@@ -317,7 +317,7 @@ _The assistant can initiate contact, not just respond._
 
 ### MVP Simplifications
 
-| Clawdbot | assistant-bot MVP |
+| Clawdbot | claire MVP |
 |----------|-------------------|
 | Gateway-integrated heartbeat | Start with cron |
 | Complex scheduling rules | Simple time-based triggers |
@@ -456,4 +456,4 @@ _Behavioral guidelines adapted from Clawdbot's AGENTS.md_
 
 ---
 
-_Architecture reference for assistant-bot, January 2026._
+_Architecture reference for claire, January 2026._

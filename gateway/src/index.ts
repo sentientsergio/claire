@@ -33,9 +33,10 @@ const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET || '';
 const WORKSPACE_PATH = process.env.WORKSPACE_PATH || '../workspace';
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_OWNER_ID = process.env.TELEGRAM_OWNER_ID;
+const TELEGRAM_DEV_GROUP_ID = process.env.TELEGRAM_DEV_GROUP_ID;
 
 async function main() {
-  console.log(`Starting assistant-bot gateway [${ENV_LABEL}] — v2 architecture`);
+  console.log(`Starting claire gateway [${ENV_LABEL}] — v2 architecture`);
   console.log(`  Environment: ${NODE_ENV}`);
   console.log(`  Port: ${PORT}`);
   console.log(`  Workspace: ${WORKSPACE_PATH}`);
@@ -102,11 +103,13 @@ async function main() {
 
   // Start Telegram bot if configured
   if (TELEGRAM_TOKEN && TELEGRAM_OWNER_ID) {
-    console.log(`  Telegram: enabled (owner: ${TELEGRAM_OWNER_ID})`);
+    const devGroupId = TELEGRAM_DEV_GROUP_ID ? parseInt(TELEGRAM_DEV_GROUP_ID, 10) : undefined;
+    console.log(`  Telegram: enabled (owner: ${TELEGRAM_OWNER_ID}${devGroupId ? `, dev group: ${devGroupId}` : ''})`);
     await startTelegram({
       token: TELEGRAM_TOKEN,
       ownerId: parseInt(TELEGRAM_OWNER_ID, 10),
       workspacePath: WORKSPACE_PATH,
+      devGroupId,
     });
   } else {
     console.log('  Telegram: disabled (no token or owner ID)');

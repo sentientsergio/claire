@@ -1,16 +1,16 @@
 #!/bin/bash
-# Gateway control script for assistant-bot
+# Gateway control script for claire
 # Usage: ./gateways.sh [install|start|stop|restart|status|logs] [dev|prod|all]
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GATEWAY_DIR="$(dirname "$SCRIPT_DIR")"
-LOG_DIR="$HOME/Library/Logs/assistant-bot"
+LOG_DIR="$HOME/Library/Logs/claire"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 
-DEV_PLIST="bot.assistant.gateway.dev.plist"
-PROD_PLIST="bot.assistant.gateway.prod.plist"
+DEV_PLIST="claire.gateway.dev.plist"
+PROD_PLIST="claire.gateway.prod.plist"
 
 # Colors for output
 RED='\033[0;31m'
@@ -37,7 +37,7 @@ print_error() {
 
 # Check if a gateway is running
 is_running() {
-    local label="bot.assistant.gateway.$1"
+    local label="claire.gateway.$1"
     launchctl list | grep -q "$label" 2>/dev/null
 }
 
@@ -98,7 +98,7 @@ start_gateway() {
         return
     fi
     
-    local plist="bot.assistant.gateway.${env}.plist"
+    local plist="claire.gateway.${env}.plist"
     local plist_path="$LAUNCH_AGENTS_DIR/$plist"
     
     if [[ ! -f "$plist_path" ]]; then
@@ -132,7 +132,7 @@ stop_gateway() {
         return
     fi
     
-    local plist="bot.assistant.gateway.${env}.plist"
+    local plist="claire.gateway.${env}.plist"
     local plist_path="$LAUNCH_AGENTS_DIR/$plist"
     
     if [[ ! -f "$plist_path" ]]; then
@@ -173,7 +173,7 @@ show_status() {
     echo "=============="
     
     for env in dev prod; do
-        local plist_path="$LAUNCH_AGENTS_DIR/bot.assistant.gateway.${env}.plist"
+        local plist_path="$LAUNCH_AGENTS_DIR/claire.gateway.${env}.plist"
         
         if [[ ! -f "$plist_path" ]]; then
             echo -e "$env: ${YELLOW}not installed${NC}"

@@ -1,7 +1,7 @@
 {
-  "name": "assistant-bot-cli",
+  "name": "claire-cli",
   "version": "0.1.0",
-  "description": "CLI client for assistant-bot gateway",
+  "description": "CLI client for claire gateway",
   "type": "module",
   "main": "dist/index.js",
   "bin": {

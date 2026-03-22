@@ -1,6 +1,6 @@
 # Gateway Operations Guide
 
-How to start, stop, and manage the assistant-bot gateways (Claire and Claire.dev).
+How to start, stop, and manage the claire gateways (Claire and Claire.dev).
 
 ---
 
@@ -45,7 +45,7 @@ The gateways run as **macOS LaunchAgents**—background services managed by `lau
 ### After making gateway code changes
 
 ```bash
-cd ~/sentientsergio/assistant-bot/gateway
+cd ~/sentientsergio/claire/gateway
 npm run build && npm run restart:dev
 ```
 
@@ -96,9 +96,9 @@ gw-start-prod
 | Dev plist (source)  | `gateway/bot.assistant.gateway.dev.plist`              |
 | Prod plist (source) | `gateway/bot.assistant.gateway.prod.plist`             |
 | Installed plists    | `~/Library/LaunchAgents/bot.assistant.gateway.*.plist` |
-| Dev logs            | `~/Library/Logs/assistant-bot/gateway.dev.log`         |
-| Prod logs           | `~/Library/Logs/assistant-bot/gateway.prod.log`        |
-| Error logs          | `~/Library/Logs/assistant-bot/gateway.*.error.log`     |
+| Dev logs            | `~/Library/Logs/claire/gateway.dev.log`         |
+| Prod logs           | `~/Library/Logs/claire/gateway.prod.log`        |
+| Error logs          | `~/Library/Logs/claire/gateway.*.error.log`     |
 | Shell aliases       | `~/.zshrc`                                             |
 
 ---
@@ -108,7 +108,7 @@ gw-start-prod
 If you need to reinstall (e.g., after changing plist files):
 
 ```bash
-cd ~/sentientsergio/assistant-bot/gateway
+cd ~/sentientsergio/claire/gateway
 ./scripts/gateways.sh uninstall
 ./scripts/gateways.sh install
 ./scripts/gateways.sh start all
@@ -131,7 +131,7 @@ source ~/.zshrc
 Check error logs:
 
 ```bash
-cat ~/Library/Logs/assistant-bot/gateway.dev.error.log
+cat ~/Library/Logs/claire/gateway.dev.error.log
 ```
 
 ### Gateway starts then immediately stops
@@ -139,7 +139,7 @@ cat ~/Library/Logs/assistant-bot/gateway.dev.error.log
 Usually a code error. Check the regular log:
 
 ```bash
-tail -50 ~/Library/Logs/assistant-bot/gateway.dev.log
+tail -50 ~/Library/Logs/claire/gateway.dev.log
 ```
 
 ### Need to see what launchctl thinks

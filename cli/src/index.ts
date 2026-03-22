@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * CLI Client for assistant-bot
+ * CLI Client for claire
  * 
  * A simple REPL that connects to the gateway and allows chat interaction.
  */

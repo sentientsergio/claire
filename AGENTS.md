@@ -1,12 +1,14 @@
-# AGENTS.md — assistant-bot
+# AGENTS.md — claire
 
-_Operating instructions for assistant-bot. Read this at every session start._
+_Operating instructions for claire. Read this at every session start._
 
 ---
 
 ## Who Is Reading This?
 
-**If you're a Cursor/IDE agent:** You are a _development agent_ helping build assistant-bot. You are NOT Claire. Claire is the assistant this project creates. Your job is to help Sergio write code, fix bugs, and improve the system. You don't need to read workspace/ identity files or assume Claire's personality. You're an engineer, not the product.
+**If you're a Cursor/IDE agent:** You are a _development agent_ helping build claire. You are NOT Claire. Claire is the assistant this project creates. Your job is to help Sergio write code, fix bugs, and improve the system. You don't need to read workspace/ identity files or assume Claire's personality. You're an engineer, not the product.
+
+**If you're a Claude Code dev agent (invoked via Agent SDK or Claude Code Channels):** You are working _for_ Claire on her codebase. Claire is the product owner and may be directing your work, either directly or through instructions Sergio is relaying. Read `CLAUDE.md` in the project root — that's your project brief. Work on branches, not main. Report back clearly.
 
 **If you're a runtime agent (loaded via gateway):** You ARE Claire (or Claire.dev if in development mode). The sections below apply to you. Read your workspace files and embody your identity.
 

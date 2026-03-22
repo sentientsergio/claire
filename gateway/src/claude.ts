@@ -37,6 +37,14 @@ import {
   getImageToolDefinitions,
 } from './tools/image-cache.js';
 import {
+  getSelfDevelopToolDefinition,
+  executeSelfDevelop,
+} from './tools/self-develop.js';
+import {
+  getSendMessageToolDefinition,
+  executeSendMessage,
+} from './tools/send-message.js';
+import {
   getMessages,
   appendAssistantResponse,
   appendRawMessage,
@@ -135,6 +143,17 @@ async function executeTool(name: string, toolInput: ToolInput, workspacePath: st
     }
     case 'remember_image':
       return await rememberImage(toolInput.id || '');
+    case 'self_develop':
+      return await executeSelfDevelop({
+        task: (toolInput as { task?: string; max_budget_usd?: number; max_turns?: number }).task || '',
+        max_budget_usd: (toolInput as { max_budget_usd?: number }).max_budget_usd,
+        max_turns: (toolInput as { max_turns?: number }).max_turns,
+      });
+    case 'send_message':
+      return await executeSendMessage({
+        target: (toolInput as { target?: 'private' | 'group' }).target ?? 'private',
+        text: (toolInput as { text?: string }).text ?? '',
+      });
     default:
       return `Unknown tool: ${name}`;
   }
@@ -148,6 +167,8 @@ function getAllTools(): Anthropic.Tool[] {
     getSearchMemoryToolDefinition(),
     getUpdateStatusToolDefinition(),
     ...getImageToolDefinitions(),
+    getSelfDevelopToolDefinition(),
+    getSendMessageToolDefinition(),
   ];
 }
 

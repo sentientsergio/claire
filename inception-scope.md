@@ -1,10 +1,10 @@
-# assistant-bot: Inception Scope
+# claire: Inception Scope
 
 _Capturing design decisions and open questions for the inception state._
 
 ---
 
-## What assistant-bot Is
+## What claire Is
 
 A Clawdbot-inspired personal AI assistant framework that:
 
@@ -90,7 +90,7 @@ We're flattering Clawdbot's architecture with imitation, not forking:
 ## File Structure (Inception State)
 
 ```
-assistant-bot/
+claire/
 ├── AGENTS.md                    # Operational instructions (read every session)
 ├── BOOTSTRAP.md                 # Inception instructions (deleted after inception)
 ├── workspace/                   # Runtime identity (the assistant lives here)
