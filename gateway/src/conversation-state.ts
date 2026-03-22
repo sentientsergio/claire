@@ -43,6 +43,17 @@ export async function initConversationState(wsPath: string): Promise<void> {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed.messages)) {
       messages = parsed.messages;
+      // Strip any leading orphaned tool_result messages left by a prior prune or crash
+      while (messages.length > 0) {
+        const first = messages[0];
+        if (first.role === 'user' && Array.isArray(first.content)) {
+          const allToolResults = (first.content as Array<{ type?: string }>).every(
+            b => b && typeof b === 'object' && b.type === 'tool_result'
+          );
+          if (allToolResults) { messages.shift(); continue; }
+        }
+        break;
+      }
       console.log(`[conversation-state] Restored ${messages.length} messages from disk`);
     }
   } catch {
@@ -240,12 +251,33 @@ export function getRecentMessagesFromState(limit: number = 10): MessageParam[] {
  * Prune the messages array, keeping only the most recent `keepCount` messages.
  * Called during nightly maintenance after daily files have captured older context.
  * Returns the number of messages removed.
+ *
+ * After slicing, advances past any leading orphaned tool_result messages —
+ * these occur when a prune cuts mid-tool-call, leaving a user message that
+ * contains only tool_result blocks with no matching preceding tool_use.
+ * The Anthropic API rejects such arrays with a 400 error.
  */
 export function pruneMessages(keepCount: number): number {
   if (messages.length <= keepCount) return 0;
   const removed = messages.length - keepCount;
   messages = messages.slice(-keepCount);
-  console.log(`[conversation-state] Pruned ${removed} messages, retained last ${keepCount}`);
+
+  // Strip leading orphaned tool_result messages
+  while (messages.length > 0) {
+    const first = messages[0];
+    if (first.role === 'user' && Array.isArray(first.content)) {
+      const allToolResults = (first.content as Array<{ type?: string }>).every(
+        b => b && typeof b === 'object' && b.type === 'tool_result'
+      );
+      if (allToolResults) {
+        messages.shift();
+        continue;
+      }
+    }
+    break;
+  }
+
+  console.log(`[conversation-state] Pruned ${removed} messages, retained last ${messages.length}`);
   return removed;
 }
 

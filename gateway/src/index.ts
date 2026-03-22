@@ -27,6 +27,9 @@ import { resolve } from 'path';
 const PORT = parseInt(process.env.GATEWAY_PORT || '18789', 10);
 const MCP_PORT = parseInt(process.env.MCP_PORT || '18793', 10);
 const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN || '';
+const MCP_PUBLIC_URL = process.env.MCP_PUBLIC_URL || '';
+const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID || '';
+const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET || '';
 const WORKSPACE_PATH = process.env.WORKSPACE_PATH || '../workspace';
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_OWNER_ID = process.env.TELEGRAM_OWNER_ID;
@@ -80,8 +83,15 @@ async function main() {
 
   // Start MCP server (Channel Sense — the sole external interface)
   try {
-    await startMcpServer(MCP_PORT, WORKSPACE_PATH, MCP_AUTH_TOKEN);
-    console.log(`  MCP server: enabled (port: ${MCP_PORT})`);
+    await startMcpServer(
+      MCP_PORT,
+      WORKSPACE_PATH,
+      MCP_AUTH_TOKEN,
+      MCP_PUBLIC_URL || undefined,
+      OAUTH_CLIENT_ID || undefined,
+      OAUTH_CLIENT_SECRET || undefined,
+    );
+    console.log(`  MCP server: enabled (port: ${MCP_PORT})${MCP_PUBLIC_URL ? ` public: ${MCP_PUBLIC_URL}` : ''}`);
   } catch (err) {
     console.error('  MCP server: failed to start', err);
   }

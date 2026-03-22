@@ -206,7 +206,7 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
 
     try {
       const result = await enqueueTurn(async () => {
-        appendUserMessage(userMessage);
+        appendUserMessage(`[via telegram] ${userMessage}`);
         try {
           return await chat(workspacePath);
         } catch (err) {
@@ -305,7 +305,7 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
       channelRegistry.updateActivity('telegram');
 
       const result = await enqueueTurn(async () => {
-        appendUserMessage(userMessage);
+        appendUserMessage(`[via telegram] ${userMessage}`);
         try {
           const chatResult = await chat(workspacePath);
           await persistState();
@@ -360,7 +360,7 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
         : `[Attached document: ${doc.file_name} (${doc.mime_type})]\n\n(User shared this document without additional text. Acknowledge receipt and ask if they want to discuss it, or note that you cannot yet read document contents directly.)`;
 
       const result = await enqueueTurn(async () => {
-        appendUserMessage(userMessage);
+        appendUserMessage(`[via telegram] ${userMessage}`);
         return await chat(workspacePath);
       });
 
@@ -415,7 +415,7 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
         },
         {
           type: 'text' as const,
-          text: `[Photo: ${entry.id}] ${caption || '(Photo shared without caption)'}`,
+          text: `[via telegram] [Photo: ${entry.id}] ${caption || '(Photo shared without caption)'}`,
         },
       ];
 
