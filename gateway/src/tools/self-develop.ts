@@ -155,6 +155,11 @@ export async function executeSelfDevelop(input: {
   try {
     result = await runClaude(input.task, existingSessionId, maxTurns, maxBudget);
   } catch (resumeErr) {
+    // execFile errors carry stderr/stdout on the error object itself
+    const resumeError = resumeErr as Error & { stderr?: string; stdout?: string; code?: number | string };
+    const resumeStderr = resumeError.stderr?.slice(0, 500) || '';
+    console.error(`[self_develop] Failed (code=${resumeError.code}): ${resumeError.message}\nStderr: ${resumeStderr}`);
+
     // Resume failed — session is stale (machine restart, session ended)
     if (existingSessionId) {
       console.log('[self_develop] Resume failed, starting fresh session');
@@ -162,12 +167,13 @@ export async function executeSelfDevelop(input: {
       try {
         result = await runClaude(input.task, null, maxTurns, maxBudget);
       } catch (freshErr) {
-        const err = freshErr as Error & { stderr?: string };
-        return `self_develop failed (fresh session): ${err.message}\n\nStderr: ${err.stderr?.slice(0, 500) || 'none'}`;
+        const err = freshErr as Error & { stderr?: string; stdout?: string; code?: number | string };
+        const freshStderr = err.stderr?.slice(0, 500) || '';
+        console.error(`[self_develop] Fresh session also failed (code=${err.code}): ${err.message}\nStderr: ${freshStderr}`);
+        return `self_develop failed (fresh session): ${err.message}\n\nStderr: ${freshStderr || 'none'}\nStdout: ${err.stdout?.slice(0, 500) || 'none'}`;
       }
     } else {
-      const err = resumeErr as Error & { stderr?: string };
-      return `self_develop failed: ${err.message}\n\nStderr: ${err.stderr?.slice(0, 500) || 'none'}`;
+      return `self_develop failed: ${resumeError.message}\n\nStderr: ${resumeStderr || 'none'}\nStdout: ${resumeError.stdout?.slice(0, 500) || 'none'}`;
     }
   }
 

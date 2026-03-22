@@ -3,11 +3,6 @@
  *
  * Starts the WebSocket server, Telegram bot, heartbeat scheduler,
  * and initializes the unified conversation state.
- *
- * Environment:
- *   NODE_ENV=development  → loads .env.dev (Claire.dev)
- *   NODE_ENV=production   → loads .env.prod (Claire.prod)
- *   (unset)               → loads .env (legacy, defaults to prod-like)
  */
 
 import { NODE_ENV, ENV_LABEL } from './env.js';

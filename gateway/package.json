@@ -6,17 +6,10 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "NODE_ENV=production node dist/index.js",
-    "start:dev": "NODE_ENV=development node dist/index.js",
-    "start:prod": "NODE_ENV=production node dist/index.js",
-    "restart:dev": "launchctl unload ~/Library/LaunchAgents/claire.gateway.dev.plist 2>/dev/null; launchctl load ~/Library/LaunchAgents/claire.gateway.dev.plist",
-    "restart:prod": "launchctl unload ~/Library/LaunchAgents/claire.gateway.prod.plist 2>/dev/null; launchctl load ~/Library/LaunchAgents/claire.gateway.prod.plist",
-    "stop:dev": "launchctl unload ~/Library/LaunchAgents/claire.gateway.dev.plist 2>/dev/null || true",
-    "stop:prod": "launchctl unload ~/Library/LaunchAgents/claire.gateway.prod.plist 2>/dev/null || true",
-    "logs:dev": "tail -f ~/Library/Logs/claire/gateway.dev.log",
-    "logs:prod": "tail -f ~/Library/Logs/claire/gateway.prod.log",
-    "dev:clone": "bash scripts/dev-clone.sh",
-    "dev:wipe": "bash scripts/dev-wipe.sh",
+    "start": "node dist/index.js",
+    "restart": "launchctl unload ~/Library/LaunchAgents/claire.gateway.prod.plist 2>/dev/null; launchctl load ~/Library/LaunchAgents/claire.gateway.prod.plist",
+    "stop": "launchctl unload ~/Library/LaunchAgents/claire.gateway.prod.plist 2>/dev/null || true",
+    "logs": "tail -f ~/Library/Logs/claire/gateway.prod.log",
     "test:memory": "npx tsx scripts/test-memory.ts"
   },
   "dependencies": {
