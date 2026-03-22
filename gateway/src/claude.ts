@@ -151,7 +151,7 @@ async function executeTool(name: string, toolInput: ToolInput, workspacePath: st
       });
     case 'send_message':
       return await executeSendMessage({
-        target: (toolInput as { target?: 'private' | 'group' }).target ?? 'private',
+        target: (toolInput as { target?: 'private' | 'discord' }).target ?? 'private',
         text: (toolInput as { text?: string }).text ?? '',
       });
     default:

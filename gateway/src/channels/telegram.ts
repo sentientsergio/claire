@@ -2,7 +2,7 @@
  * Telegram Channel — v2
  *
  * Connects the gateway to Telegram via grammY.
- * Only responds to messages from the configured owner user ID.
+ * Only responds to messages from the configured owner user ID (private 1:1 only).
  *
  * Uses the unified conversation state — one messages array across all channels.
  * Registered with ChannelRegistry as a persistent channel for heartbeat delivery.
@@ -10,6 +10,8 @@
  * Voice support:
  *   Incoming: .ogg voice messages → Whisper STT → converse as text
  *   Outgoing: Optional TTS via OpenAI (toggle via status.json preferences.voice_responses)
+ *
+ * Note: Group/workshop functionality has moved to Discord (bots can see each other there).
  */
 
 import { Bot, Context, InputFile } from 'grammy';
@@ -36,14 +38,12 @@ import { Readable } from 'stream';
 
 let bot: Bot | null = null;
 let ownerChatId: number | null = null;
-let devGroupChatId: number | null = null;
 let openaiClient: OpenAI | null = null;
 
 interface TelegramConfig {
   token: string;
   ownerId: number;
   workspacePath: string;
-  devGroupId?: number;
 }
 
 async function getShowThinking(workspacePath: string): Promise<boolean> {
@@ -155,79 +155,11 @@ async function sendVoiceResponse(
 }
 
 
-/**
- * Handle a message arriving in the dev group.
- *
- * Two-tier response model:
- *   - @mention or reply-to-Claire → triggers chat() immediately
- *   - Everything else → appended to conversation state as context, no chat() call
- *
- * Claire sees all group messages but the gateway only forces a response
- * when she's directly addressed. She self-filters the rest.
- */
-async function handleGroupMessage(
-  ctx: Context,
-  text: string,
-  workspacePath: string,
-): Promise<void> {
-  const from = ctx.from;
-  const username = from?.username ?? String(from?.id ?? 'unknown');
-  const isBot = from?.is_bot ?? false;
-
-  channelRegistry.updateActivity('telegram:group');
-
-  const prefix = `[via telegram:group, from: @${username}${isBot ? ', is_bot: true' : ''}]`;
-  const taggedMessage = `${prefix} ${text}`;
-
-  console.log(`[telegram:group] ${prefix}: "${text.substring(0, 60)}..."`);
-
-  // Every message → call chat(), let Claire decide whether to respond
-  // Same model as heartbeats: the trigger fires, Claire holds or speaks
-  // is_bot flag is in the prefix so she knows who's talking — her judgment, not the gateway's
-  try {
-    const result = await enqueueTurn(async () => {
-      appendUserMessage(taggedMessage);
-      try {
-        return await chat(workspacePath);
-      } catch (err) {
-        rollbackLastUserMessage();
-        throw err;
-      }
-    });
-
-    await addMessage(workspacePath, 'telegram:group', 'user', taggedMessage);
-
-    const isHold = result.text.trim() === 'NO_RESPONSE' || result.text.includes('NO_RESPONSE');
-    if (isHold) {
-      console.log('[telegram:group] Claire is holding — no response sent');
-      return;
-    }
-
-    const sendArtifact = result.text.match(/^\[SEND(?::[^\]]+)?\]\s*/);
-    const cleanText = sendArtifact ? result.text.slice(sendArtifact[0].length) : result.text;
-
-    await addMessage(workspacePath, 'telegram:group', 'assistant', cleanText);
-
-    if (isMemoryInitialized()) {
-      storeExchange(taggedMessage, cleanText, 'telegram:group').catch(err => {
-        console.error('[telegram:group] Failed to store exchange in memory:', err);
-      });
-    }
-
-    await sendToGroup(cleanText);
-    console.log(`[telegram:group] Sent response (${cleanText.length} chars)`);
-
-  } catch (err) {
-    console.error('[telegram:group] Error:', err);
-  }
-}
-
 export async function startTelegram(config: TelegramConfig): Promise<Bot> {
-  const { token, ownerId, workspacePath, devGroupId } = config;
+  const { token, ownerId, workspacePath } = config;
 
   bot = new Bot(token);
   ownerChatId = ownerId;
-  devGroupChatId = devGroupId ?? null;
 
   // Initialize OpenAI client for Whisper STT and optional TTS
   const openaiKey = process.env.OPENAI_API_KEY;
@@ -247,55 +179,22 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
     },
   });
 
-  // Register dev group as a second persistent channel if configured
-  if (devGroupId) {
-    channelRegistry.register({
-      name: 'telegram:group',
-      type: 'persistent',
-      deliver: async (message: string) => {
-        return await sendToGroup(message);
-      },
-    });
-    console.log(`[telegram] Dev group registered (chat ID: ${devGroupId})`);
-  }
-
-  // Route messages by context — private chat vs dev group vs everything else
+  // Only accept private messages from the owner — workshop has moved to Discord
   bot.use(async (ctx, next) => {
     const chatType = ctx.chat?.type;
-    const chatId = ctx.chat?.id;
     const fromId = ctx.from?.id;
 
-    // Private chat: only accept messages from the owner
-    if (chatType === 'private') {
-      if (fromId !== ownerId) {
-        console.log(`[telegram] Ignoring private message from non-owner: ${fromId}`);
-        return;
-      }
+    if (chatType === 'private' && fromId === ownerId) {
       await next();
       return;
     }
 
-    // Dev group: accept all messages from the registered group
-    if ((chatType === 'group' || chatType === 'supergroup') && devGroupId && chatId === devGroupId) {
-      await next();
-      return;
-    }
-
-    // Everything else: drop silently
-    console.log(`[telegram] Ignoring message from unregistered chat: ${chatId} (type: ${chatType})`);
+    // Drop everything else silently
   });
 
   bot.on('message:text', async (ctx) => {
     const userMessage = ctx.message.text;
-    const chatType = ctx.chat?.type;
 
-    // Route group messages to the group handler
-    if (chatType === 'group' || chatType === 'supergroup') {
-      await handleGroupMessage(ctx, userMessage, workspacePath);
-      return;
-    }
-
-    // Private chat handler (existing behavior)
     console.log(`[telegram] Received: "${userMessage.substring(0, 50)}..."`);
 
     channelRegistry.updateActivity('telegram');
@@ -643,34 +542,6 @@ export async function sendToOwner(message: string): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('[telegram] Failed to send to owner:', err);
-    return false;
-  }
-}
-
-export async function sendToGroup(message: string): Promise<boolean> {
-  if (!bot || !devGroupChatId) {
-    console.error('[telegram:group] Bot not initialized or dev group ID not set');
-    return false;
-  }
-
-  try {
-    const MAX_LENGTH = 4000;
-    if (message.length <= MAX_LENGTH) {
-      await bot.api.sendMessage(devGroupChatId, message);
-    } else {
-      let remaining = message;
-      while (remaining.length > 0) {
-        let splitAt = remaining.lastIndexOf('\n\n', MAX_LENGTH);
-        if (splitAt === -1 || splitAt < MAX_LENGTH / 2) splitAt = remaining.lastIndexOf('\n', MAX_LENGTH);
-        if (splitAt === -1 || splitAt < MAX_LENGTH / 2) splitAt = MAX_LENGTH;
-        await bot.api.sendMessage(devGroupChatId, remaining.substring(0, splitAt));
-        remaining = remaining.substring(splitAt).trimStart();
-      }
-    }
-    console.log(`[telegram:group] Sent message to dev group`);
-    return true;
-  } catch (err) {
-    console.error('[telegram:group] Failed to send to dev group:', err);
     return false;
   }
 }

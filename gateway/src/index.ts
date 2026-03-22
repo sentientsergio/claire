@@ -15,6 +15,7 @@ import { NODE_ENV, ENV_LABEL } from './env.js';
 import { createServer } from './server.js';
 import { startHeartbeat } from './heartbeat.js';
 import { startTelegram, stopTelegram } from './channels/telegram.js';
+import { startDiscord, stopDiscord } from './channels/discord.js';
 import { initScheduledHeartbeats } from './scheduled-heartbeats.js';
 import { startWebhookServer, registerDefaultHandler } from './webhook.js';
 import { initMemoryStore, initFactsStore } from './memory/index.js';
@@ -33,7 +34,8 @@ const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET || '';
 const WORKSPACE_PATH = process.env.WORKSPACE_PATH || '../workspace';
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_OWNER_ID = process.env.TELEGRAM_OWNER_ID;
-const TELEGRAM_DEV_GROUP_ID = process.env.TELEGRAM_DEV_GROUP_ID;
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const DISCORD_WORKSHOP_CHANNEL_ID = process.env.DISCORD_WORKSHOP_CHANNEL_ID;
 
 async function main() {
   console.log(`Starting claire gateway [${ENV_LABEL}] — v2 architecture`);
@@ -101,18 +103,28 @@ async function main() {
   startWebhookServer();
   registerDefaultHandler();
 
-  // Start Telegram bot if configured
+  // Start Telegram bot if configured (private 1:1 only — workshop is on Discord)
   if (TELEGRAM_TOKEN && TELEGRAM_OWNER_ID) {
-    const devGroupId = TELEGRAM_DEV_GROUP_ID ? parseInt(TELEGRAM_DEV_GROUP_ID, 10) : undefined;
-    console.log(`  Telegram: enabled (owner: ${TELEGRAM_OWNER_ID}${devGroupId ? `, dev group: ${devGroupId}` : ''})`);
+    console.log(`  Telegram: enabled (owner: ${TELEGRAM_OWNER_ID})`);
     await startTelegram({
       token: TELEGRAM_TOKEN,
       ownerId: parseInt(TELEGRAM_OWNER_ID, 10),
       workspacePath: WORKSPACE_PATH,
-      devGroupId,
     });
   } else {
     console.log('  Telegram: disabled (no token or owner ID)');
+  }
+
+  // Start Discord bot if configured (workshop channel — three-way with Claude Code)
+  if (DISCORD_BOT_TOKEN && DISCORD_WORKSHOP_CHANNEL_ID) {
+    console.log(`  Discord: enabled (workshop channel: ${DISCORD_WORKSHOP_CHANNEL_ID})`);
+    await startDiscord({
+      token: DISCORD_BOT_TOKEN,
+      workshopChannelId: DISCORD_WORKSHOP_CHANNEL_ID,
+      workspacePath: WORKSPACE_PATH,
+    });
+  } else {
+    console.log('  Discord: disabled (no token or channel ID)');
   }
 
   // Initialize scheduled heartbeats (one-off and recurring)
@@ -128,6 +140,7 @@ async function main() {
   process.on('SIGINT', () => {
     console.log('\nShutting down...');
     stopTelegram();
+    stopDiscord();
     stopMcpServer();
     server.close();
     process.exit(0);
@@ -136,6 +149,7 @@ async function main() {
   process.on('SIGTERM', () => {
     console.log('\nShutting down...');
     stopTelegram();
+    stopDiscord();
     stopMcpServer();
     server.close();
     process.exit(0);

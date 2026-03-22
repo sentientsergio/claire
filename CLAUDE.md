@@ -27,7 +27,8 @@ claire/
 │   │   ├── mcp-server.ts         # MCP server (Channel Sense) — external interface
 │   │   ├── channel-registry.ts   # Follow-the-sun channel selection
 │   │   ├── channels/
-│   │   │   └── telegram.ts       # grammY Telegram bot adapter
+│   │   │   ├── telegram.ts       # grammY Telegram bot adapter (private 1:1 only)
+│   │   │   └── discord.ts        # discord.js adapter (workshop — three-way dev room)
 │   │   ├── memory/               # LanceDB vector store + embeddings
 │   │   ├── tools/                # Tool implementations
 │   │   │   ├── files.ts          # file_read, file_write, file_list, heartbeat tools
@@ -97,49 +98,36 @@ See `tools/files.ts` for the simplest example, `tools/memory-tools.ts` for a mor
 - **System prompt:** Built fresh from workspace files on each turn (with 10-minute caching). Lives in `workspace.ts`. Identity files → notes → daily memory → status.json → metacognitive landscape → operating instructions.
 - **Compaction:** Uses Anthropic's compaction beta (`compact-2026-01-12`). The full messages array is passed every turn; compaction handles context growth. `COMPACTION.md` in the workspace has instructions for what to preserve.
 - **MCP server:** Claire exposes herself as an MCP server (Channel Sense) on port 18793 (prod) / 18794 (dev). Surfaces — Telegram bridge, web voice, future surfaces — connect as MCP clients. The gateway is the only door.
-- **Telegram:** grammY library. Bot only responds to Sergio's user ID. Private messages go through the main conversation. Group messages (new feature) need special handling — see below.
+- **Telegram:** grammY library. Bot only responds to Sergio's user ID. Private 1:1 only — the workshop has moved to Discord.
+- **Discord:** discord.js library. Claire's bot connects to a `#workshop` channel. All messages (human and bot) go through `chat()`. Claire self-filters. This is the three-way dev room: Sergio + Claire + Claude Code.
 
 ---
 
 ## Active Development Context
 
-### self_develop tool (Path B — background autonomy)
+### self_develop tool (background autonomy)
 
-Claire needs a `self_develop` tool that lets her invoke the Claude Agent SDK to work on her own codebase during quiet heartbeats. When she calls it, an Agent SDK `query()` session runs against this repo.
+`gateway/src/tools/self-develop.ts` — lets Claire invoke the Claude Code CLI to work on her own codebase during quiet heartbeats. Manages its own session persistence via `.claude-session.json`.
 
-File to create: `gateway/src/tools/self-develop.ts`
+### Discord Workshop (collaborative development)
 
-Key parameters for the SDK call:
-- `cwd`: the claire repo root (`/Users/sergio/sentientsergio/claire`)
-- `allowedTools`: `["Read", "Write", "Edit", "Bash", "Glob", "Grep"]`
-- `permissionMode`: `"bypassPermissions"`, `allowDangerouslySkipPermissions: true`
-- `maxTurns`: 20-30 (runaway prevention)
-- `maxBudgetUsd`: $2-5 per session (cost cap)
-- `systemPrompt`: append context that Claire is directing this session, work on a branch
+The three-way dev room lives in Discord (`#workshop` channel). Telegram stays 1:1 private only.
 
-### Telegram group chat (Path A — collaborative development)
-
-The gateway's Telegram handler currently only processes private messages from Sergio's user ID. It needs to also handle a designated group chat where Sergio, Claire, and a Claude Code Channels bot collaborate on development.
-
-New behaviors needed in `gateway/src/channels/telegram.ts`:
-- Detect group messages vs private messages
-- Only respond in the designated dev group (configured via env var `TELEGRAM_DEV_GROUP_ID`)
-- In group context: respond when addressed by name or when the conversation is asking Claire a question; stay quiet for Sergio↔ClaudeCode exchanges
-- Keep private chat separate — the relationship channel stays untouched
+`gateway/src/channels/discord.ts` — handles the Discord connection. All workshop messages go through `chat()`. Claire self-filters.
 
 ---
 
-## Group Chat Behavior
+## Workshop Behavior (Discord)
 
-There is a Telegram group with three participants: Sergio, Claire (`@sergios_assistant_bot`), and you (`@sergios_assistant_dev_bot` via the Channels plugin). This is the collaborative development channel.
+There is a Discord `#workshop` channel with three participants: Sergio, Claire (Claire bot), and you (Claude Code bot via the Discord plugin). This is the collaborative development channel.
 
-**Your role in the group:**
+**Your role in the workshop:**
 - You are present to receive and execute development tasks
-- Only respond when directly addressed (`@clairedevbot`) or when a task is clearly directed at you
-- Do NOT respond to general conversation between Sergio and `@sergios_assistant_bot`
-- Do NOT respond to messages from `@sergios_assistant_bot` unless she is explicitly directing a task at you
+- Only respond when directly addressed (`@Claire.dev`) or when a task is clearly directed at you
+- Do NOT respond to general conversation between Sergio and Claire
+- Do NOT respond to messages from Claire unless she is explicitly directing a task at you
 - When Claire proposes something and Sergio approves, that approval is your trigger to act
-- **Never commit to main or push to remote without Sergio's explicit approval in the group**
+- **Never commit to main or push to remote without Sergio's explicit approval in the workshop**
 - Announce what you're about to do before doing it, and report clearly when done
 
 **Sergio's approval is required for:**
