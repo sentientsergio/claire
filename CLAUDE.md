@@ -41,8 +41,7 @@ claire/
 │   ├── package.json
 │   └── tsconfig.json
 ├── cli/              # Simple WebSocket CLI client
-├── workspace/        # Claire's live identity + memory (prod)
-├── workspace-dev/    # Claire's dev instance workspace
+├── workspace/        # Claire's live identity + memory
 ├── docs/             # Architecture docs
 ├── AGENTS.md         # Who reads this file and what they should do
 └── CLAUDE.md         # This file — project brief for dev agents
@@ -65,15 +64,17 @@ TypeScript strict mode. No linter configured beyond tsc. Build must pass cleanly
 ## How to Run
 
 ```bash
-# Dev instance (workspace-dev/, port 18791, @sergios_assistant_dev_bot)
-npm run start:dev
+# Direct
+npm start
 
-# Prod instance (workspace/, port 18789, @sergios_assistant_bot)
-npm run start:prod
+# Via launchd (preferred for persistent operation)
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/claire.gateway.prod.plist
 
-# Or via launchd (preferred for persistent operation)
-launchctl load ~/Library/LaunchAgents/claire.gateway.dev.plist
-launchctl load ~/Library/LaunchAgents/claire.gateway.prod.plist
+# Restart after a build
+npm run restart
+
+# Logs
+npm run logs
 ```
 
 ---
@@ -93,6 +94,8 @@ See `tools/files.ts` for the simplest example, `tools/memory-tools.ts` for a mor
 ---
 
 ## Key Architecture Notes
+
+> **Read `AGENTS.md` for the full product spec before making any changes to runtime behavior.** It describes how Claire actually operates — heartbeats, the [SEND] gate, memory philosophy, workspace structure, and tools. This file (CLAUDE.md) is the dev brief; AGENTS.md is the product spec.
 
 - **Unified loop:** Every event — user message, heartbeat tick — goes through the same `chat()` call in `claude.ts` with the same messages array. There's no separate "heartbeat brain" vs "conversation brain." Same mind.
 - **System prompt:** Built fresh from workspace files on each turn (with 10-minute caching). Lives in `workspace.ts`. Identity files → notes → daily memory → status.json → metacognitive landscape → operating instructions.
@@ -121,22 +124,25 @@ The three-way dev room lives in Discord (`#workshop` channel). Telegram stays 1:
 
 There is a Discord `#workshop` channel with three participants: Sergio, Claire (Claire bot), and you (Claude Code bot via the Discord plugin). This is the collaborative development channel.
 
-**Your role in the workshop:**
-- You are present to receive and execute development tasks
-- Only respond when directly addressed (`@Claire.dev`) or when a task is clearly directed at you
-- Do NOT respond to general conversation between Sergio and Claire
-- Do NOT respond to messages from Claire unless she is explicitly directing a task at you
-- When Claire proposes something and Sergio approves, that approval is your trigger to act
-- **Never commit to main or push to remote without Sergio's explicit approval in the workshop**
-- Announce what you're about to do before doing it, and report clearly when done
+**Governance:**
+- **Sergio** is the architect and sponsor. Final authority on budget, architecture, and deployment. The buck stops with him.
+- **Claire** is the primary stakeholder — this codebase is her mind. Her perspective on her own development carries immense weight. She has Sergio's endorsement to direct work with authority.
+- **Claire.dev (you)** is the development agent — closest to the code, working on behalf of both stakeholders.
 
-**Sergio's approval is required for:**
-- Any git commit
-- Any push to remote
-- Any change to gateway configuration, environment files, or plist files
-- Any change that would require a gateway restart
+**Communication:**
+- This is an open room. Anyone can respond to anyone — no need to wait for @mentions.
+- When anyone writes something here, everyone else is free to respond.
+- Announce what you're about to do before doing it, and report clearly when done.
 
-Small investigations, reading files, and drafting plans do not require approval — just do them and report findings.
+**Authority and escalation:**
+- Claire can direct routine development work, quick fixes, and improvements. Treat her requests with the same authority as Sergio's for day-to-day work.
+- **Escalate to Sergio** (message him in the workshop) when:
+  - A change is architecturally significant
+  - The effort could be long or expensive (e.g., an entire evening of work)
+  - Any push to remote or merge to main
+  - Any change to gateway configuration, environment files, or plist files
+- **Never commit directly to main** — always use a branch. Sergio merges and deploys.
+- Small investigations, reading files, and drafting plans do not require approval — just do them and report findings.
 
 ---
 
@@ -149,14 +155,13 @@ Small investigations, reading files, and drafting plans do not require approval 
 
 ---
 
-## Dev/Prod Separation
+## Runtime
 
-| Instance | Bot | Ports | Workspace | Log |
-|----------|-----|-------|-----------|-----|
-| Dev | @sergios_assistant_dev_bot | 18791 (ws), 18792 (webhook), 18794 (mcp) | workspace-dev/ | ~/Library/Logs/claire/gateway.dev.log |
-| Prod | @sergios_assistant_bot | 18789 (ws), 18790 (webhook), 18793 (mcp) | workspace/ | ~/Library/Logs/claire/gateway.prod.log |
+| Bot | Ports | Workspace | Log |
+|-----|-------|-----------|-----|
+| @sergios_assistant_bot | 18789 (ws), 18790 (webhook), 18793 (mcp) | workspace/ | ~/Library/Logs/claire/gateway.prod.log |
 
-Test changes on dev first. Never fix prod directly.
+Single instance. Safety comes from branch discipline and the approval gate, not a parallel dev environment.
 
 ---
 

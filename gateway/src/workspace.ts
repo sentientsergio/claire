@@ -12,7 +12,6 @@
 import { readFile, readdir, stat } from 'fs/promises';
 import { join, resolve } from 'path';
 import type Anthropic from '@anthropic-ai/sdk';
-import { NODE_ENV } from './env.js';
 
 type TextBlockParam = Anthropic.Beta.BetaTextBlockParam;
 
@@ -124,18 +123,14 @@ async function computeFileSignature(workspacePath: string): Promise<string> {
 async function buildSystemPromptBlocks(workspacePath: string): Promise<TextBlockParam[]> {
   const sections: string[] = [];
 
-  // --- Environment + time ---
-  const envContext = NODE_ENV === 'development'
-    ? `\n**⚠️ You are running as the DEVELOPMENT instance (Claire.dev).**\nThis is a testing/development environment. You may encounter bugs or incomplete features.\n`
-    : '';
-
+  // --- Time ---
   sections.push(`Current date: ${new Date().toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   })}
 Current time: ${new Date().toLocaleTimeString('en-US', {
     hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
   })}
-${envContext}
+
 ---
 `);
 
