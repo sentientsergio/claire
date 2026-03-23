@@ -78,6 +78,18 @@ function parseThinkingCommand(message: string): 'show' | 'hide' | null {
   return null;
 }
 
+/**
+ * Strip any thinking-mode scaffolding preamble that leaked into result.text.
+ * Example artifact: "🧠 Thinking mode enabled. I'll show you my reasoning\n"
+ */
+function stripThinkingPreamble(text: string): string {
+  const stripped = text.replace(/^🧠 Thinking mode[^\n]*\n?/, '');
+  if (stripped !== text) {
+    console.warn('[telegram] Stripped thinking-mode preamble artifact from response');
+  }
+  return stripped;
+}
+
 async function getVoiceResponsesEnabled(workspacePath: string): Promise<boolean> {
   try {
     const statusPath = path.join(workspacePath, 'status.json');
@@ -235,10 +247,11 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
 
       // Strip any accidental [SEND] / [SEND:channel] prefix that leaked from heartbeat conventions
       const sendArtifact = result.text.match(/^\[SEND(?::[^\]]+)?\]\s*/);
-      const cleanText = sendArtifact ? result.text.slice(sendArtifact[0].length) : result.text;
+      const afterSendStrip = sendArtifact ? result.text.slice(sendArtifact[0].length) : result.text;
       if (sendArtifact) {
         console.warn('[telegram] Stripped accidental [SEND] artifact from conversational response');
       }
+      const cleanText = stripThinkingPreamble(afterSendStrip);
 
       const showThinking = await getShowThinking(workspacePath);
       let fullResponse: string;
@@ -331,20 +344,21 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
         return;
       }
 
+      const voiceResponseText = stripThinkingPreamble(result.text);
       await addMessage(workspacePath, 'telegram', 'user', userMessage);
-      await addMessage(workspacePath, 'telegram', 'assistant', result.text);
+      await addMessage(workspacePath, 'telegram', 'assistant', voiceResponseText);
 
       if (isMemoryInitialized()) {
-        storeExchange(userMessage, result.text, 'telegram').catch(err => {
+        storeExchange(userMessage, voiceResponseText, 'telegram').catch(err => {
           console.error('[telegram] Failed to store voice exchange in memory:', err);
         });
       }
 
       const voiceEnabled = await getVoiceResponsesEnabled(workspacePath);
       if (voiceEnabled && openaiClient) {
-        await sendVoiceResponse(ctx, result.text, ownerId);
+        await sendVoiceResponse(ctx, voiceResponseText, ownerId);
       } else {
-        await sendLongMessage(ctx, result.text);
+        await sendLongMessage(ctx, voiceResponseText);
       }
 
       console.log(`[telegram] Responded to voice message (${result.text.length} chars)`);
@@ -373,13 +387,14 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
         return await chat(workspacePath);
       });
 
+      const docResponseText = stripThinkingPreamble(result.text);
       await addMessage(workspacePath, 'telegram', 'user', userMessage);
-      await addMessage(workspacePath, 'telegram', 'assistant', result.text);
+      await addMessage(workspacePath, 'telegram', 'assistant', docResponseText);
 
       const showThinking = await getShowThinking(workspacePath);
       const fullResponse = showThinking && result.thinking
-        ? `<thinking>\n${result.thinking}\n</thinking>\n\n${result.text}`
-        : result.text;
+        ? `<thinking>\n${result.thinking}\n</thinking>\n\n${docResponseText}`
+        : docResponseText;
 
       await sendLongMessage(ctx, fullResponse);
       console.log(`[telegram] Responded to document (${fullResponse.length} chars)`);
@@ -443,22 +458,23 @@ export async function startTelegram(config: TelegramConfig): Promise<Bot> {
         }
       });
 
-      updateImageSummary(entry.id, result.text.slice(0, 500)).catch(() => {});
+      const photoResponseText = stripThinkingPreamble(result.text);
+      updateImageSummary(entry.id, photoResponseText.slice(0, 500)).catch(() => {});
 
       const logMessage = caption ? `[Photo: ${entry.id}] ${caption}` : `[Photo: ${entry.id}]`;
       await addMessage(workspacePath, 'telegram', 'user', logMessage);
-      await addMessage(workspacePath, 'telegram', 'assistant', result.text);
+      await addMessage(workspacePath, 'telegram', 'assistant', photoResponseText);
 
       if (isMemoryInitialized()) {
-        storeExchange(logMessage, result.text, 'telegram').catch(err => {
+        storeExchange(logMessage, photoResponseText, 'telegram').catch(err => {
           console.error('[telegram] Failed to store photo exchange in memory:', err);
         });
       }
 
       const showThinking = await getShowThinking(workspacePath);
       const fullResponse = showThinking && result.thinking
-        ? `<thinking>\n${result.thinking}\n</thinking>\n\n${result.text}`
-        : result.text;
+        ? `<thinking>\n${result.thinking}\n</thinking>\n\n${photoResponseText}`
+        : photoResponseText;
 
       await sendLongMessage(ctx, fullResponse);
       console.log(`[telegram] Responded to photo (${fullResponse.length} chars)`);
