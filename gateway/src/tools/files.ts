@@ -5,8 +5,9 @@
  * All paths are relative to the workspace directory for safety.
  */
 
-import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
+import { readFile, writeFile, rename, readdir, stat, mkdir, unlink } from 'fs/promises';
 import { join, resolve, relative, dirname } from 'path';
+import { randomBytes } from 'crypto';
 import type Anthropic from '@anthropic-ai/sdk';
 import {
   addScheduledHeartbeat,
@@ -14,6 +15,21 @@ import {
   removeHeartbeat,
 } from '../scheduled-heartbeats.js';
 import { getTokenUsage } from '../conversation-state.js';
+
+/**
+ * Critical workspace files that must never be overwritten with empty or
+ * suspiciously-short content. Any attempt to do so is logged and rejected.
+ */
+const CRITICAL_FILES = new Set([
+  'MEMORY.md',
+  'SELF-AWARENESS.md',
+  'THREADS.md',
+  'DEV-NOTES.md',
+  'status.json',
+]);
+
+/** Minimum acceptable byte length for a write to a critical file. */
+const CRITICAL_MIN_BYTES = 50;
 
 /**
  * Resolve a path safely within the workspace
@@ -58,8 +74,10 @@ export async function fileRead(
 }
 
 /**
- * Write content to a file in the workspace
- * Creates parent directories if they don't exist
+ * Write content to a file in the workspace.
+ * Creates parent directories if they don't exist.
+ * Uses an atomic write-to-temp-then-rename to prevent partial writes on crash.
+ * Rejects empty or suspiciously-short writes to critical files.
  */
 export async function fileWrite(
   workspacePath: string,
@@ -67,12 +85,39 @@ export async function fileWrite(
   content: string
 ): Promise<string> {
   const safePath = resolveSafePath(workspacePath, filePath);
-  
+
+  // Normalise: content must be a string (guard against accidental non-string)
+  if (typeof content !== 'string') {
+    const msg = `[file_write] Rejected write to "${filePath}": content is not a string (got ${typeof content})`;
+    console.error(msg);
+    return `Error: ${msg}`;
+  }
+
+  // Write-guard: refuse empty or suspiciously-short writes to critical files
+  const fileName = filePath.split('/').pop() ?? filePath;
+  if (CRITICAL_FILES.has(fileName) && content.length < CRITICAL_MIN_BYTES) {
+    const msg = `[file_write] Rejected write to critical file "${filePath}": content is only ${content.length} bytes (minimum ${CRITICAL_MIN_BYTES}). This would likely destroy important data. If you intend to clear this file, do it explicitly via a shell command.`;
+    console.error(msg);
+    return `Error: ${msg}`;
+  }
+
   // Create parent directories if needed
   const dir = dirname(safePath);
   await mkdir(dir, { recursive: true });
-  
-  await writeFile(safePath, content, 'utf-8');
+
+  // Atomic write: write to a temp file in the same directory, then rename.
+  // rename() is atomic on POSIX filesystems — a crash mid-write leaves the
+  // original file intact rather than producing a partial/empty file.
+  const tmpPath = join(dir, `.tmp_${randomBytes(8).toString('hex')}`);
+  try {
+    await writeFile(tmpPath, content, 'utf-8');
+    await rename(tmpPath, safePath);
+  } catch (err) {
+    // Clean up the temp file if rename failed
+    try { await unlink(tmpPath); } catch { /* ignore */ }
+    throw err;
+  }
+
   return `Successfully wrote to ${filePath}`;
 }
 

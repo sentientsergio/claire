@@ -10,8 +10,9 @@
  */
 
 import type Anthropic from '@anthropic-ai/sdk';
-import { readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { readFile, writeFile, rename, mkdir, unlink } from 'fs/promises';
+import { join, dirname } from 'path';
+import { randomBytes } from 'crypto';
 import {
   retrieveMemories,
   formatMemoriesForPrompt,
@@ -83,16 +84,55 @@ export async function executeUpdateStatus(
   const statusPath = join(workspacePath, 'status.json');
 
   try {
+    // Guard: updates must be a plain object. If Claude passes a JSON string
+    // instead of a parsed object, spreading it produces character-indexed keys
+    // (keys "0" through "N") — the known STATUS-JSON-CORRUPTION-001 pattern.
+    if (typeof updates !== 'object' || updates === null || Array.isArray(updates)) {
+      const msg = `[update_status] Rejected: updates must be a plain object, got ${Array.isArray(updates) ? 'array' : typeof updates}. Pass an object like {"field": "value"}, not a JSON string.`;
+      console.error(msg);
+      return `Error: ${msg}`;
+    }
+
+    // Additional guard: detect if the updates object itself looks like a spread
+    // string (all keys are numeric indices). Reject rather than merge garbage.
+    const keys = Object.keys(updates);
+    if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
+      const msg = `[update_status] Rejected: updates object has only numeric keys ("0", "1", ...) — this looks like a string was spread into an object (STATUS-JSON-CORRUPTION-001). Pass a real object.`;
+      console.error(msg);
+      return `Error: ${msg}`;
+    }
+
     let current: Record<string, unknown> = {};
     try {
       const raw = await readFile(statusPath, 'utf-8');
-      current = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
+      // Guard: only use the existing file if it's a real object, not corrupted
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        current = parsed as Record<string, unknown>;
+        // Strip any numeric-indexed corruption keys from the existing file
+        const corrupted = Object.keys(current).filter(k => /^\d+$/.test(k));
+        if (corrupted.length > 0) {
+          console.warn(`[update_status] Stripping ${corrupted.length} corrupted numeric keys from status.json before merge`);
+          for (const k of corrupted) delete current[k];
+        }
+      }
     } catch {
-      // No existing status — start fresh
+      // No existing status or unparseable — start fresh
     }
 
     const merged = { ...current, ...updates, last_updated: new Date().toISOString() };
-    await writeFile(statusPath, JSON.stringify(merged, null, 2), 'utf-8');
+
+    // Atomic write: temp file + rename to prevent partial writes on crash
+    const dir = dirname(statusPath);
+    await mkdir(dir, { recursive: true });
+    const tmpPath = join(dir, `.tmp_status_${randomBytes(8).toString('hex')}`);
+    try {
+      await writeFile(tmpPath, JSON.stringify(merged, null, 2), 'utf-8');
+      await rename(tmpPath, statusPath);
+    } catch (err) {
+      try { await unlink(tmpPath); } catch { /* ignore */ }
+      throw err;
+    }
 
     const updatedFields = Object.keys(updates).join(', ');
     console.log(`[tools] Updated status.json: ${updatedFields}`);
