@@ -10,8 +10,9 @@
  * - Concatenates rapid-fire messages into a single user turn
  */
 
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, rename, mkdir, unlink } from 'fs/promises';
 import { join, dirname } from 'path';
+import { randomBytes } from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
 
 type MessageParam = Anthropic.Beta.BetaMessageParam;
@@ -174,9 +175,18 @@ export function rewriteMessageContent(index: number, content: string): void {
 export async function persistState(): Promise<void> {
   const filePath = getStatePath();
   try {
-    await mkdir(dirname(filePath), { recursive: true });
+    const dir = dirname(filePath);
+    await mkdir(dir, { recursive: true });
     const data = JSON.stringify({ messages, lastPersisted: new Date().toISOString() }, null, 2);
-    await writeFile(filePath, data, 'utf-8');
+    // Atomic write: crash mid-write leaves the previous state file intact
+    const tmpPath = join(dir, `.tmp_conv_${randomBytes(8).toString('hex')}`);
+    try {
+      await writeFile(tmpPath, data, 'utf-8');
+      await rename(tmpPath, filePath);
+    } catch (err) {
+      try { await unlink(tmpPath); } catch { /* ignore */ }
+      throw err;
+    }
     console.log(`[conversation-state] Persisted ${messages.length} messages to disk`);
   } catch (err) {
     console.error('[conversation-state] Failed to persist:', err);
