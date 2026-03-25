@@ -17,6 +17,7 @@ import { initMemoryStore, initFactsStore } from './memory/index.js';
 import { initConversationState, getMessageCount, pruneMessages, persistState } from './conversation-state.js';
 import { startHealthMonitoring } from './health.js';
 import { initImageCache } from './tools/image-cache.js';
+import { initCostTracker } from './tools/cost-tracker.js';
 import { startMcpServer, stopMcpServer } from './mcp-server.js';
 import { resolve } from 'path';
 
@@ -59,6 +60,10 @@ async function main() {
   // Initialize image cache
   initImageCache(resolve(WORKSPACE_PATH));
   console.log('  Image cache: initialized');
+
+  // Initialize cost tracker
+  initCostTracker(resolve(WORKSPACE_PATH));
+  console.log('  Cost tracker: initialized');
 
   // Initialize memory store (vector chunks — write pipeline only)
   try {

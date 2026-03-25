@@ -7,6 +7,8 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { recordSpend, initCostTracker } from './tools/cost-tracker.js';
+export { initCostTracker };
 import {
   fileRead,
   fileWrite,
@@ -64,7 +66,8 @@ function getClient(): Anthropic {
   return client;
 }
 
-const SONNET_MODEL = 'claude-sonnet-4-6';
+export const SONNET_MODEL = 'claude-sonnet-4-6';
+export const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
 const OPUS_MODEL = 'claude-opus-4-6';
 const MAX_TOKENS = 4096;
 const OPUS_MAX_TOKENS = 8192;
@@ -204,8 +207,10 @@ async function getCompactionConfig(workspacePath: string) {
  */
 export async function chat(
   workspacePath: string,
+  options: { model?: string } = {},
 ): Promise<ChatResult> {
-  console.log(`[chat] Using ${SONNET_MODEL} with compaction`);
+  const model = options.model ?? SONNET_MODEL;
+  console.log(`[chat] Using ${model} with compaction`);
 
   const systemPrompt = await getSystemPrompt(workspacePath);
   const contextManagement = await getCompactionConfig(workspacePath);
@@ -215,7 +220,7 @@ export async function chat(
   while (true) {
     const response = await getClient().beta.messages.create({
       betas: [COMPACTION_BETA],
-      model: SONNET_MODEL,
+      model,
       max_tokens: MAX_TOKENS,
       system: systemPrompt,
       messages: getMessages(),
@@ -240,6 +245,7 @@ export async function chat(
     }
 
     updateTokenUsage(response.usage.input_tokens, compactionThisTurn);
+    recordSpend(model, response.usage.input_tokens, response.usage.output_tokens).catch(() => {});
     await maybeAutoCheckpoint(getTokenUsage().utilizationPct, workspacePath);
 
     if (turnText.trim()) {
@@ -424,6 +430,8 @@ export async function sonnetMaintenanceChat(
       lastNonEmptyText = turnText;
     }
 
+    recordSpend(SONNET_MODEL, response.usage.input_tokens, response.usage.output_tokens).catch(() => {});
+
     if (toolUses.length === 0) {
       return turnText.trim() ? turnText : lastNonEmptyText;
     }
@@ -474,8 +482,8 @@ export async function opusChat(
   let turns = 0;
   const startTime = Date.now();
 
-  const OPUS_INPUT_COST_PER_M = 5.0;
-  const OPUS_OUTPUT_COST_PER_M = 25.0;
+  const OPUS_INPUT_COST_PER_M = 15.0;
+  const OPUS_OUTPUT_COST_PER_M = 75.0;
 
   while (true) {
     const response = await getClient().messages.create({
@@ -489,6 +497,7 @@ export async function opusChat(
     turns++;
     totalInputTokens += response.usage.input_tokens;
     totalOutputTokens += response.usage.output_tokens;
+    recordSpend(OPUS_MODEL, response.usage.input_tokens, response.usage.output_tokens).catch(() => {});
 
     const toolUses: Array<{ id: string; name: string; input: unknown }> = [];
     const assistantContent: Anthropic.ContentBlock[] = [];

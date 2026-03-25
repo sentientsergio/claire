@@ -69,6 +69,7 @@ async function runClaude(task: string, sessionId: string | null, maxTurns: numbe
     '-p', task,
     '--output-format', 'json',
     '--max-turns', String(maxTurns),
+    '--max-budget-usd', String(maxBudget),
     '--allowedTools', 'Read,Write,Edit,Bash,Glob,Grep',
     '--dangerously-skip-permissions',
   ];

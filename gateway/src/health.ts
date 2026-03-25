@@ -7,6 +7,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
+import { SONNET_MODEL } from './claude.js';
 import cron from 'node-cron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -54,7 +55,7 @@ async function checkAnthropic(): Promise<HealthResult> {
   try {
     const client = new Anthropic();
     await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: SONNET_MODEL,
       max_tokens: 10,
       messages: [{ role: 'user', content: 'ping' }],
     });
