@@ -18,6 +18,7 @@ import { initConversationState, getMessageCount, pruneMessages, persistState } f
 import { startHealthMonitoring } from './health.js';
 import { initImageCache } from './tools/image-cache.js';
 import { initCostTracker } from './tools/cost-tracker.js';
+import { initSelfDevelopAuditLog } from './tools/self-develop.js';
 import { startMcpServer, stopMcpServer } from './mcp-server.js';
 import { resolve } from 'path';
 
@@ -64,6 +65,9 @@ async function main() {
   // Initialize cost tracker
   initCostTracker(resolve(WORKSPACE_PATH));
   console.log('  Cost tracker: initialized');
+
+  // Initialize self_develop audit log
+  initSelfDevelopAuditLog(resolve(WORKSPACE_PATH));
 
   // Initialize memory store (vector chunks — write pipeline only)
   try {
