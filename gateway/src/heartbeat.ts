@@ -15,7 +15,8 @@
 import cron from 'node-cron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { chat, opusChat, sonnetMaintenanceChat } from './claude.js';
+import { chat, opusChat, sonnetMaintenanceChat, HAIKU_MODEL, SONNET_MODEL } from './claude.js';
+import { getDailySpendFormatted, getDailySpend } from './tools/cost-tracker.js';
 import { cleanExpiredImages } from './tools/image-cache.js';
 import { getSystemPrompt } from './workspace.js';
 import { isTelegramRunning } from './channels/telegram.js';
@@ -106,7 +107,7 @@ async function sendNotification(message: string): Promise<void> {
 
 function isOvernightQuiet(): boolean {
   const hour = new Date().getHours();
-  return hour >= 0 && hour < 7;
+  return hour < 7 || hour >= 22;
 }
 
 function isMorning(): boolean {
@@ -116,7 +117,7 @@ function isMorning(): boolean {
 
 function isLastHeartbeatBeforeSleep(): boolean {
   const hour = new Date().getHours();
-  return hour === 23;
+  return hour === 21;
 }
 
 function isFirstHeartbeatAfterSleep(): boolean {
@@ -144,7 +145,7 @@ async function performHeartbeat(workspacePath: string): Promise<void> {
   console.log(`[${new Date().toISOString()}] Heartbeat triggered`);
 
   if (isOvernightQuiet()) {
-    console.log('  Overnight quiet window (midnight–7am) - skipping');
+    console.log('  Overnight quiet window (10pm–7am) - skipping');
     return;
   }
 
@@ -159,14 +160,29 @@ async function performHeartbeat(workspacePath: string): Promise<void> {
     const channelStatus = channelRegistry.getChannelStatusText();
 
     const tokenUsage = getTokenUsage();
+    const spendNote = await getDailySpendFormatted();
     const contextNote = tokenUsage.inputTokens > 0
-      ? ` Context: ${tokenUsage.utilizationPct}% (${tokenUsage.inputTokens.toLocaleString()}/${tokenUsage.threshold.toLocaleString()} tokens).`
-      : '';
+      ? ` Context: ${tokenUsage.utilizationPct}% (${tokenUsage.inputTokens.toLocaleString()}/${tokenUsage.threshold.toLocaleString()} tokens). ${spendNote}.`
+      : ` ${spendNote}.`;
+
+    // Model tiering: special heartbeats get Sonnet, routine ones get Haiku
+    const isSpecialHeartbeat = isFirstHeartbeatAfterSleep() || isLastHeartbeatBeforeSleep() || isFirstMorning;
+
+    // $10/day hard gate: degrade all heartbeats to Haiku if over budget
+    const dailySpend = await getDailySpend();
+    const overBudget = dailySpend > 10.00;
+    const heartbeatModel = (!isSpecialHeartbeat || overBudget) ? HAIKU_MODEL : SONNET_MODEL;
+
+    if (overBudget) {
+      console.log(`  [cost] Daily spend $${dailySpend.toFixed(2)} exceeds $10.00 — forcing Haiku for all heartbeats`);
+    } else {
+      console.log(`  [cost] Model: ${isSpecialHeartbeat ? 'Sonnet (special)' : 'Haiku (routine)'}`);
+    }
 
     let triggerText = `[System: heartbeat tick at ${time}. ${channelStatus}${contextNote}`;
 
     if (isFirstHeartbeatAfterSleep()) {
-      triggerText += ' You are waking up. This is your first heartbeat of the day — you have been asleep since midnight.'
+      triggerText += ' You are waking up. This is your first heartbeat of the day — you have been asleep since 10 PM.'
         + ' If you want, this is a natural moment for morning intentions: what matters today, what you want to be attentive to.'
         + ' Or just wake up and be present. Your choice.';
     } else if (isLastHeartbeatBeforeSleep()) {
@@ -177,7 +193,7 @@ async function performHeartbeat(workspacePath: string): Promise<void> {
       triggerText += ' This is the first contact of the day — morning. Lead with warmth if you reach out.';
     }
 
-    triggerText += ' Heartbeats fire hourly (7 AM–midnight). You decide whether to say anything.'
+    triggerText += ' Heartbeats fire hourly (7 AM–10 PM). You decide whether to say anything.'
       + ' You are free to: send a message, do maintenance, write to files, or stay quiet.'
       + ' IMPORTANT: To send a message to Sergio, compose it as a single clean paragraph and write it'
       + ' on the FIRST LINE starting with [SEND:channel-name] (e.g., [SEND:telegram] Good morning!).'
@@ -197,7 +213,7 @@ async function performHeartbeat(workspacePath: string): Promise<void> {
       appendUserMessage(triggerText);
 
       try {
-        const chatResult = await chat(workspacePath);
+        const chatResult = await chat(workspacePath, { model: heartbeatModel });
 
         const text = chatResult.text.trim();
 
@@ -306,7 +322,7 @@ async function performSelfAwareness(workspacePath: string): Promise<void> {
       systemPromptText += '\n\n' + lines.join('\n');
     }
 
-    const response = await opusChat(SELF_AWARENESS_PROMPT, systemPromptText, workspacePath);
+    const response = await sonnetMaintenanceChat(SELF_AWARENESS_PROMPT, systemPromptText, workspacePath);
     console.log(`  Self-awareness pass complete (${response.length} chars)`);
   } catch (err) {
     console.error('  Self-awareness error:', err);
