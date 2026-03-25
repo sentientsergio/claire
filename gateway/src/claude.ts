@@ -184,6 +184,23 @@ function getReadOnlyTools(): Anthropic.Tool[] {
 }
 
 /**
+ * Tools for nightly maintenance contexts (reflection, curation, handoff).
+ * Excludes self_develop and send_message — maintenance is for reading,
+ * reflecting, and writing workspace files, not for taking external action.
+ */
+function getMaintenanceTools(): Anthropic.Tool[] {
+  return [
+    ...getToolDefinitions(),
+    ...getWebToolDefinitions(),
+    ...(isCalendarConfigured() ? getCalendarToolDefinitions() : []),
+    getSearchMemoryToolDefinition(),
+    getUpdateStatusToolDefinition(),
+    ...getImageToolDefinitions(),
+    // self_develop and send_message intentionally excluded
+  ];
+}
+
+/**
  * Build the compaction configuration object.
  */
 async function getCompactionConfig(workspacePath: string) {
@@ -392,9 +409,9 @@ export async function sonnetMaintenanceChat(
   userMessage: string,
   systemPrompt: string,
   workspacePath: string,
-  options: { readOnly?: boolean } = {}
+  options: { readOnly?: boolean; maintenanceMode?: boolean } = {}
 ): Promise<string> {
-  console.log(`[chat] Using sonnet-maintenance (${SONNET_MODEL})`);
+  console.log(`[chat] Using sonnet-maintenance (${SONNET_MODEL})${options.maintenanceMode ? ' [maintenance tools only]' : ''}`);
 
   const messages: Anthropic.MessageParam[] = [
     { role: 'user', content: userMessage }
@@ -402,13 +419,19 @@ export async function sonnetMaintenanceChat(
 
   let lastNonEmptyText = '';
 
+  const tools = options.readOnly
+    ? getReadOnlyTools()
+    : options.maintenanceMode
+      ? getMaintenanceTools()
+      : getAllTools();
+
   while (true) {
     const response = await getClient().messages.create({
       model: SONNET_MODEL,
       max_tokens: MAX_TOKENS,
       system: systemPrompt,
       messages,
-      tools: options.readOnly ? getReadOnlyTools() : getAllTools(),
+      tools,
     });
 
     const toolUses: Array<{ id: string; name: string; input: unknown }> = [];
@@ -466,9 +489,9 @@ export async function opusChat(
   userMessage: string,
   systemPrompt: string,
   workspacePath: string,
-  options: { readOnly?: boolean } = {}
+  options: { readOnly?: boolean; maintenanceMode?: boolean } = {}
 ): Promise<string> {
-  const mode = options.readOnly ? 'opus/read-only' : 'opus';
+  const mode = options.readOnly ? 'opus/read-only' : options.maintenanceMode ? 'opus/maintenance' : 'opus';
   console.log(`[chat] Using ${mode} (${OPUS_MODEL})`);
 
   const messages: Anthropic.MessageParam[] = [
@@ -484,13 +507,19 @@ export async function opusChat(
   const OPUS_INPUT_COST_PER_M = 15.0;
   const OPUS_OUTPUT_COST_PER_M = 75.0;
 
+  const tools = options.readOnly
+    ? getReadOnlyTools()
+    : options.maintenanceMode
+      ? getMaintenanceTools()
+      : getAllTools();
+
   while (true) {
     const response = await getClient().messages.create({
       model: OPUS_MODEL,
       max_tokens: OPUS_MAX_TOKENS,
       system: systemPrompt,
       messages,
-      tools: options.readOnly ? getReadOnlyTools() : getAllTools(),
+      tools,
     });
 
     turns++;

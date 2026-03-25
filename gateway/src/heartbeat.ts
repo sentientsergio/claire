@@ -291,7 +291,7 @@ async function performMemoryCuration(workspacePath: string): Promise<void> {
   try {
     const systemPromptBlocks = await getSystemPrompt(workspacePath);
     const systemPromptText = systemPromptBlocks.map(b => b.text).join('\n');
-    const response = await sonnetMaintenanceChat(MEMORY_CURATION_PROMPT, systemPromptText, workspacePath);
+    const response = await sonnetMaintenanceChat(MEMORY_CURATION_PROMPT, systemPromptText, workspacePath, { maintenanceMode: true });
     console.log(`  Curation complete (${response.length} chars). File writes handled via tools.`);
   } catch (err) {
     console.error('  Memory curation error:', err);
@@ -322,7 +322,7 @@ async function performSelfAwareness(workspacePath: string): Promise<void> {
       systemPromptText += '\n\n' + lines.join('\n');
     }
 
-    const response = await sonnetMaintenanceChat(SELF_AWARENESS_PROMPT, systemPromptText, workspacePath);
+    const response = await sonnetMaintenanceChat(SELF_AWARENESS_PROMPT, systemPromptText, workspacePath, { maintenanceMode: true });
     console.log(`  Self-awareness pass complete (${response.length} chars)`);
   } catch (err) {
     console.error('  Self-awareness error:', err);
@@ -410,7 +410,7 @@ async function performHandoff(workspacePath: string): Promise<void> {
       systemPromptText += '\n\n' + lines.join('\n');
     }
 
-    const response = await sonnetMaintenanceChat(HANDOFF_PROMPT, systemPromptText, workspacePath);
+    const response = await sonnetMaintenanceChat(HANDOFF_PROMPT, systemPromptText, workspacePath, { maintenanceMode: true });
     console.log(`  Handoff document complete (${response.length} chars). File write handled via tools.`);
     await writeHandoffStatus(workspacePath, true, handoffFile);
   } catch (err) {
