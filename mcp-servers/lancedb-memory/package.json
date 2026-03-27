@@ -1,0 +1,20 @@
+{
+  "name": "claire-memory-mcp",
+  "version": "1.0.0",
+  "description": "LanceDB semantic memory MCP server for Claire",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@lancedb/lancedb": "^0.23.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "openai": "^6.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
