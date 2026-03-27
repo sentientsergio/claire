@@ -35,14 +35,28 @@ import sys, json
 try:
     data = json.load(sys.stdin)
     for s in data.get('data', []):
-        if s.get('title') == 'Claire' and s.get('status') == 'active' and s.get('worker_status') == 'running':
+        if s.get('title') == 'Claire' and s.get('status') == 'active':
             print(s['id'])
             break
 except: pass
 " 2>/dev/null)
 
 if [ -z "$SESSION_ID" ]; then
-  echo "$(date -Iseconds) [heartbeat] No active Claire session found. Skipping." >> "$LOG"
+  # Debug: log what the API returned
+  DEBUG=$(curl -s \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "anthropic-version: $API_VERSION" \
+    "$API_BASE/v1/code/sessions?limit=5" 2>/dev/null | \
+    python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for s in data.get('data', []):
+        print(f'{s.get(\"title\",\"?\")}:{s.get(\"status\",\"?\")}:{s.get(\"worker_status\",\"?\")}')
+except Exception as e:
+    print(f'parse error: {e}')
+" 2>/dev/null)
+  echo "$(date -Iseconds) [heartbeat] No active Claire session found. Sessions: $DEBUG" >> "$LOG"
   exit 0
 fi
 
