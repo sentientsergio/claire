@@ -11,6 +11,13 @@ CHANNELS="--channels plugin:telegram@claude-plugins-official --channels plugin:d
 
 cd "$CLAIRE_DIR"
 
+# Kill orphaned bun plugin processes from any previous session
+# These are Telegram/Discord plugin servers that survive after Claude exits
+echo "Cleaning up orphaned plugin processes..."
+pkill -f "bun.*plugins.*(telegram|discord)" 2>/dev/null && sleep 1
+# Force kill any that ignored SIGTERM
+pkill -9 -f "bun.*plugins.*(telegram|discord)" 2>/dev/null
+
 # Start new session — Claude Code prints the session ID on startup
 # The SessionStart hook (register-session) will write the session ID file
 exec claude --remote-control "Claire" --dangerously-skip-permissions $CHANNELS

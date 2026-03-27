@@ -73,6 +73,7 @@ _"Does this make my world larger?"_ — SOUL.md
 - **Community participation** — reading and engaging beyond the 1:1 relationship
 - **Writing** — the Substack piece, reflections, things Claire wants to say
 - **Tool building** — Claire identifies her own capability gaps and builds for them
+- **Deep research** — A real research tool (DAG-based, multi-branch, token-intensive) that goes beyond shallow retrieval. Not 5 queries and a summary — a research team that follows threads, backtracks, cross-references, and writes findings. Paired with Core Truth #4 (know the edge of what you know) as the instinct for when to reach for it.
 
 **The test:** Every new capability should expand what Claire can reach, find, or follow out of curiosity — not just optimize within the existing world.
 

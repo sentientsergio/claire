@@ -10,4 +10,4 @@ CLAIRE_DIR="$HOME/sentientsergio/claire"
 PROJECT_NAME="${1:-$(basename "$PWD")}"
 
 # Stay in the current directory — this is the project we're working on
-exec claude --remote-control "$PROJECT_NAME" --dangerously-skip-permissions
+exec claude --remote-control "$PROJECT_NAME" --dangerously-skip-permissions --strict-mcp-config --mcp-config '{"mcpServers":{}}'

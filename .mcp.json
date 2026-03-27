@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "claire-memory": {
+      "command": "bash",
+      "args": ["/Users/sergio/sentientsergio/claire/mcp-servers/lancedb-memory/start.sh"],
+      "env": {
+        "CLAIRE_WORKSPACE": "/Users/sergio/sentientsergio/claire/workspace"
+      }
+    }
+  }
+}
