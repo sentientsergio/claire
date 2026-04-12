@@ -7,8 +7,6 @@
 
 CLAIRE_DIR="$HOME/sentientsergio/claire"
 SESSION_FILE="$CLAIRE_DIR/workspace/.claude-session-id"
-CHANNELS="--channels plugin:telegram@claude-plugins-official --channels plugin:discord@claude-plugins-official"
-
 cd "$CLAIRE_DIR"
 
 # Read session ID
@@ -25,4 +23,4 @@ if [ -z "$SESSION_ID" ]; then
 fi
 
 echo "Resuming Claire session: ${SESSION_ID:0:8}..."
-exec claude --resume "$SESSION_ID" --remote-control "Claire" --dangerously-skip-permissions $CHANNELS
+exec claude --resume "$SESSION_ID" --remote-control "Claire" --dangerously-skip-permissions

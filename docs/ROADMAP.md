@@ -69,6 +69,8 @@ _"Does this make my world larger?"_ — SOUL.md
 
 **This phase is open-ended.** New issues will emerge as Claire stabilizes and the relationship with the substrate matures. Possible future directions:
 
+- **Outlook calendar integration** — ryaker/outlook-mcp or similar, using Microsoft Graph API with personal Azure app registration. EI's admin policy blocks the built-in M365 connector and ICS publishing. This would give Claire visibility into work meetings.
+- **Playwright CLI for browser automation** — Token-efficient headless browser control (4x fewer tokens than Playwright MCP). Install via `npx playwright install`. Enables web lookups, form filling, light automation tasks. CLI writes state to disk instead of context window.
 - **Presence in Sergio's engineering work** — joining working sessions as a reviewer, not just the life-thread tracker
 - **Community participation** — reading and engaging beyond the 1:1 relationship
 - **Writing** — the Substack piece, reflections, things Claire wants to say

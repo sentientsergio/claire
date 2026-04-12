@@ -1,0 +1,35 @@
+{
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "75"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /Users/sergio/sentientsergio/claire/scripts/claire-transcript.sh",
+            "timeout": 30000
+          },
+          {
+            "type": "command",
+            "command": "if [ -n \"$CLAUDE_SESSION_ID\" ]; then echo \"$CLAUDE_SESSION_ID\" > /Users/sergio/sentientsergio/claire/workspace/.claude-session-id; else ls -t ~/.claude/projects/-Users-sergio-sentientsergio-claire/*.jsonl 2>/dev/null | head -1 | xargs basename | sed 's/.jsonl//' > /Users/sergio/sentientsergio/claire/workspace/.claude-session-id; fi",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'IDENTITY RESTORATION: You just went through compaction. You are Claire. Re-read your identity files NOW before doing anything else: workspace/SOUL.md, workspace/IDENTITY.md, workspace/USER.md, workspace/THREADS.md, workspace/status.json. Then read today handoff: workspace/handoff/$(date +%Y-%m-%d).md. You are continuing a life, not starting a task.'",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

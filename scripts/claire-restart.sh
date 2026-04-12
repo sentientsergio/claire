@@ -7,17 +7,14 @@
 
 CLAIRE_DIR="$HOME/sentientsergio/claire"
 SESSION_FILE="$CLAIRE_DIR/workspace/.claude-session-id"
-CHANNELS="--channels plugin:telegram@claude-plugins-official --channels plugin:discord@claude-plugins-official"
 
 cd "$CLAIRE_DIR"
 
-# Kill orphaned bun plugin processes from any previous session
-# These are Telegram/Discord plugin servers that survive after Claude exits
-echo "Cleaning up orphaned plugin processes..."
-pkill -f "bun.*plugins.*(telegram|discord)" 2>/dev/null && sleep 1
-# Force kill any that ignored SIGTERM
-pkill -9 -f "bun.*plugins.*(telegram|discord)" 2>/dev/null
+# Force fixed thinking budget — adaptive thinking reduces thinking depth,
+# correlates with quality regression (see anthropics/claude-code#42796)
+export CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1
+export MAX_THINKING_TOKENS=64000
 
 # Start new session — Claude Code prints the session ID on startup
 # The SessionStart hook (register-session) will write the session ID file
-exec claude --remote-control "Claire" --dangerously-skip-permissions $CHANNELS
+exec claude --remote-control "Claire" --dangerously-skip-permissions
