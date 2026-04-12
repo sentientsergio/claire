@@ -6,6 +6,9 @@
       "env": {
         "CLAIRE_WORKSPACE": "/Users/sergio/sentientsergio/claire/workspace"
       }
+    },
+    "telegram": {
+      "url": "http://localhost:18794/mcp"
     }
   }
 }
