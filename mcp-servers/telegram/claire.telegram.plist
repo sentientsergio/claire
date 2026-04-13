@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>claire.telegram</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/sergio/sentientsergio/claire/mcp-servers/telegram/start.sh</string>
+    </array>
+    
+    <key>WorkingDirectory</key>
+    <string>/Users/sergio/sentientsergio/claire/mcp-servers/telegram</string>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/sergio/Library/Logs/claire/telegram.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/sergio/Library/Logs/claire/telegram.error.log</string>
+    
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>
