@@ -8,6 +8,7 @@
       }
     },
     "telegram": {
+      "type": "http",
       "url": "http://localhost:18794/mcp"
     }
   }

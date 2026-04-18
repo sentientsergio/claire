@@ -32,3 +32,6 @@ cli/dist/
 workspace-dev/
 .env.dev
 .env.prod
+
+# Tooling caches
+.paperlint_cache/

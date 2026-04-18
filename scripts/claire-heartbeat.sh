@@ -26,7 +26,11 @@ if [ -z "$TOKEN" ]; then
 fi
 
 # --- Find active Claire session ---
-SESSION_ID=$(curl -s \
+# Multiple sessions can be titled "Claire" + status=active after a hard machine
+# restart (the old session stays "active" in API state because the client died
+# before closing cleanly). Pick the candidate with the most recent last_event_at
+# — that's the one a human is actually attached to. Ghost sessions fall behind.
+PICK=$(curl -s \
   -H "Authorization: Bearer $TOKEN" \
   -H "anthropic-version: $API_VERSION" \
   "$API_BASE/v1/code/sessions?limit=10" 2>/dev/null | \
@@ -34,12 +38,18 @@ SESSION_ID=$(curl -s \
 import sys, json
 try:
     data = json.load(sys.stdin)
-    for s in data.get('data', []):
-        if s.get('title') == 'Claire' and s.get('status') == 'active':
-            print(s['id'])
-            break
+    candidates = [s for s in data.get('data', [])
+                  if s.get('title') == 'Claire' and s.get('status') == 'active']
+    if candidates:
+        best = max(candidates, key=lambda s: s.get('last_event_at') or '')
+        print(f\"{best['id']}|{len(candidates)}|{best.get('last_event_at','?')}|{best.get('worker_status','?')}\")
 except: pass
 " 2>/dev/null)
+
+SESSION_ID=$(echo "$PICK" | cut -d'|' -f1)
+CANDIDATE_COUNT=$(echo "$PICK" | cut -d'|' -f2)
+PICKED_LAST_EVENT=$(echo "$PICK" | cut -d'|' -f3)
+PICKED_WORKER=$(echo "$PICK" | cut -d'|' -f4)
 
 if [ -z "$SESSION_ID" ]; then
   # Debug: log what the API returned
@@ -58,6 +68,10 @@ except Exception as e:
 " 2>/dev/null)
   echo "$(date -Iseconds) [heartbeat] No active Claire session found. Sessions: $DEBUG" >> "$LOG"
   exit 0
+fi
+
+if [ "${CANDIDATE_COUNT:-1}" -gt 1 ]; then
+  echo "$(date -Iseconds) [heartbeat] Multiple active Claire sessions (${CANDIDATE_COUNT}). Picked ${SESSION_ID:0:20}... by last_event_at=${PICKED_LAST_EVENT} worker=${PICKED_WORKER}." >> "$LOG"
 fi
 
 # --- Fetch context usage ---
