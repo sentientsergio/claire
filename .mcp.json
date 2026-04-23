@@ -10,6 +10,13 @@
     "telegram": {
       "type": "http",
       "url": "http://localhost:18794/mcp"
+    },
+    "accord": {
+      "command": "bash",
+      "args": ["/Users/sergio/sentientsergio/claire/mcp-servers/accord/start.sh"],
+      "env": {
+        "ACCORD_TITLE": "Claire"
+      }
     }
   }
 }

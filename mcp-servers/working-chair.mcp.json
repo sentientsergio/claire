@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "accord": {
+      "command": "bash",
+      "args": ["/Users/sergio/sentientsergio/claire/mcp-servers/accord/start.sh"]
+    }
+  }
+}

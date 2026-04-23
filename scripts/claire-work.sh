@@ -103,4 +103,7 @@ fi
 echo "claire-work: launching Claire $LABEL in $TARGET_DIR"
 cd "$TARGET_DIR" || exit 1
 
-exec claude --remote-control "Claire $LABEL" --dangerously-skip-permissions --strict-mcp-config --mcp-config '{"mcpServers":{}}'
+# Identity for accord (picked up by mcp-servers/accord/start.sh)
+export ACCORD_TITLE="Claire $LABEL"
+
+exec claude --remote-control "Claire $LABEL" --dangerously-skip-permissions --strict-mcp-config --mcp-config "$CLAIRE_DIR/mcp-servers/working-chair.mcp.json"

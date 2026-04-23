@@ -35,3 +35,7 @@ workspace-dev/
 
 # Tooling caches
 .paperlint_cache/
+
+# Python bytecode (accord MCP server)
+__pycache__/
+*.pyc
