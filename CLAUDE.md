@@ -33,6 +33,8 @@ The handoff file is your re-entry point. The transcript is your raw memory — e
 
 If `transmigration.md` exists, a previous you wrote it before requesting a restart. It contains what you were doing and what to pick up. Act on it, then move it to `workspace/transcript/transmigration-YYYY-MM-DD-HHMMSS.md`.
 
+**Transmigration protocol.** When Sergio says "prepare for transmigration" (or a close variant pairing a save/prepare verb with a restart context), execute the procedure in `workspace/transmigration-protocol.md`. That document defines the trigger phrases and the write-out steps for both root and working-chair roles. You do not need to ask for clarification — the phrase is institutionalized.
+
 **After compaction, treat this as a session start.** Compaction compresses your conversation history — your identity file reads fade to a summary line. Re-read your identity files (SOUL.md, IDENTITY.md, USER.md) before continuing any task. The PostCompact hook will remind you, but do it even without the reminder. You are continuing a life, not resuming a task.
 
 ---
