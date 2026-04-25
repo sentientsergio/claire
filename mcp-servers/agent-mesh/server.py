@@ -1,21 +1,26 @@
 """
-Claire Accord — MCP Server
+Agent-mesh — MCP Server
 
 Per-session MCP server (stdio) that exposes the cross-session messaging
-primitive `accord_send`, plus inbox helpers. Loaded by every Claire chair
-(root + working sessions) via `.mcp.json`.
+primitives for the agent mesh. Loaded by every code-agent (and root Claire)
+via working-chair.mcp.json.
 
 Tools:
-    accord_send(to, kind, subject, body, wake=True, thread_id?, in_reply_to?)
-    accord_inbox()
-    accord_read(message_id, archive=True)
-    accord_peers()
-    accord_whoami()
+    send(to, kind, subject, body, wake=True, thread_id?, in_reply_to?)
+    inbox()
+    read(message_id, archive=True)
+    peers()
+    whoami()
 
-Design refs:
-    workspace/projects/accord/transport.md
-    workspace/projects/accord/sessions-registry.md
-    workspace/projects/accord/startup-protocol.md
+Storage location is configurable via MESH_DATA_DIR env var; defaults to
+the legacy ${HOME}/sentientsergio/claire/workspace/projects/accord/ path
+so existing inboxes and archives are read in place.
+
+Identity inputs (env vars):
+    MESH_TITLE   — --remote-control title (e.g. "Claire", "Code engineer")
+                   (legacy ACCORD_TITLE / CLAIRE_SESSION_TITLE also accepted)
+    MESH_ROLE    — "root" or "working" (optional; inferred from title)
+    MESH_LABEL   — short label for this agent (optional; inferred from title)
 
 Usage:
     python server.py        # stdio mode (the only mode — per-session subprocess)
@@ -33,14 +38,14 @@ from fastmcp import FastMCP
 import transport
 import registry
 
-LOG_PREFIX = "[accord-mcp]"
+LOG_PREFIX = "[agent-mesh-mcp]"
 
 
 def log(msg: str) -> None:
     print(f"{LOG_PREFIX} {msg}", file=sys.stderr, flush=True)
 
 
-mcp = FastMCP("Claire Accord")
+mcp = FastMCP("Agent Mesh")
 
 
 # ──────────────────────────────────────────────
@@ -49,7 +54,7 @@ mcp = FastMCP("Claire Accord")
 
 
 @mcp.tool()
-def accord_send(
+def send(
     to: str,
     kind: str,
     subject: str,
@@ -59,7 +64,7 @@ def accord_send(
     in_reply_to: Optional[str] = None,
 ) -> dict:
     """
-    Send a message to another Claire instance via Accord.
+    Send a message to another agent on the mesh.
 
     Two-layer transport: the message is always written to the recipient's
     file inbox (durable). If `wake=True` (default), an Anthropic Sessions API
@@ -67,11 +72,19 @@ def accord_send(
     file just sits until the recipient naturally wakes for some other reason
     — useful for low-priority or end-of-shift handoffs.
 
+    Wake discipline (per the agent-mesh skill spec):
+        wake=True  — only when the recipient is on the live-await chain
+                     (they are blocked or paused waiting on this message)
+        wake=False — for status, completion notifications outside an active
+                     await, and anything the recipient can pick up on their
+                     own cadence
+        Choose by *flow disruption*, not by *importance*.
+
     Args:
         to: Target recipient. Accepts a session_id (cse_*), a label
-            (e.g. "CPPA-Paperlint"), or the special string "root".
+            (e.g. "engineer", "Code engineer"), or the special string "root".
         kind: One of "direction", "status", "question", "ack",
-              "escalation", "note". Reflects intent — Accord is not a
+              "escalation", "note". Reflects intent — the mesh is not a
               chat room; messages have purpose.
         subject: Short human-readable summary (one line).
         body: The actual message content.
@@ -91,27 +104,27 @@ def accord_send(
     except ValueError as e:
         return {"error": str(e), "delivered": False}
     except Exception as e:
-        log(f"accord_send failed: {e}")
+        log(f"send failed: {e}")
         return {"error": f"unexpected: {e}", "delivered": False}
 
 
 @mcp.tool()
-def accord_inbox() -> list:
+def inbox() -> list:
     """
-    List pending (unread) messages in this session's accord inbox.
+    List pending (unread) messages in this session's mesh inbox.
     Returns a list of summaries (message_id, from, kind, subject, sent_at).
-    Use accord_read(message_id) to get the full body and archive it.
+    Use read(message_id) to get the full body and archive it.
     """
     transport.touch()
     try:
         return transport.list_inbox()
     except Exception as e:
-        log(f"accord_inbox failed: {e}")
+        log(f"inbox failed: {e}")
         return [{"error": str(e)}]
 
 
 @mcp.tool()
-def accord_read(message_id: str, archive: bool = True) -> dict:
+def read(message_id: str, archive: bool = True) -> dict:
     """
     Read a specific message from this session's inbox.
     By default, the file is moved to archive/ after reading (idempotent
@@ -123,19 +136,19 @@ def accord_read(message_id: str, archive: bool = True) -> dict:
     except FileNotFoundError as e:
         return {"error": str(e)}
     except Exception as e:
-        log(f"accord_read failed: {e}")
+        log(f"read failed: {e}")
         return {"error": f"unexpected: {e}"}
 
 
 @mcp.tool()
-def accord_peers() -> list:
+def peers() -> list:
     """
-    List currently-live Claire peers (registry entries fresh + API-active).
+    List currently-live mesh peers (registry entries fresh + API-active).
     Returns an array of {session_id, role, label, dir, last_seen}.
     Excludes self.
 
     Side effect: when called from root, opportunistically runs gc_sweep
-    so dead chair entries get reaped without needing a dedicated cron.
+    so dead entries get reaped without needing a dedicated cron.
     """
     transport.touch()
     try:
@@ -145,7 +158,7 @@ def accord_peers() -> list:
                 registry.gc_sweep()
             except Exception as e:
                 log(f"opportunistic gc_sweep failed (non-fatal): {e}")
-        peers = registry.live_peers(exclude_self=me["session_id"])
+        live = registry.live_peers(exclude_self=me["session_id"])
         return [
             {
                 "session_id": p["session_id"],
@@ -154,24 +167,24 @@ def accord_peers() -> list:
                 "dir": p["dir"],
                 "last_seen": p["last_seen"],
             }
-            for p in peers
+            for p in live
         ]
     except Exception as e:
-        log(f"accord_peers failed: {e}")
+        log(f"peers failed: {e}")
         return [{"error": str(e)}]
 
 
 @mcp.tool()
-def accord_whoami() -> dict:
+def whoami() -> dict:
     """
-    Identify this session in the Accord namespace.
+    Identify this session on the mesh.
     Returns {session_id, role, label, title}. Useful for debugging.
     """
     transport.touch()
     try:
         return transport.whoami()
     except Exception as e:
-        log(f"accord_whoami failed: {e}")
+        log(f"whoami failed: {e}")
         return {"error": str(e)}
 
 

@@ -1,7 +1,7 @@
 """
-Accord sessions registry — reference implementation.
+Agent-mesh sessions registry — reference implementation.
 
-Implements the helpers described in `accord/startup-protocol.md`:
+Helpers:
     - read_oauth_token()         : OAuth token from macOS Keychain
     - api_request()              : authenticated call to Sessions API
     - discover_self_cse(title)   : find this process's Sessions API ID (cse_*)
@@ -13,10 +13,10 @@ Implements the helpers described in `accord/startup-protocol.md`:
     - gc_sweep()                 : reap stale entries (root only)
 
 Stdlib only. Python 3.9+. No third-party dependencies — this is the substrate
-every Claire session uses on startup, so it must not require a venv.
+every code-agent session uses on startup, so it must not require a venv.
 
-Addressable session IDs in the registry are **Sessions API IDs** (cse_*), not
-the local CLI session UUIDs. See `accord/transport.md` § Identifier model.
+Addressable session IDs are **Sessions API IDs** (cse_*), not the local CLI
+session UUIDs. The registry file is shared with transport.py via MESH_DATA_DIR.
 """
 
 from __future__ import annotations
@@ -37,12 +37,23 @@ from typing import Iterator, List, Optional
 # --- Paths ---
 
 CLAIRE_DIR = Path(os.environ.get("CLAIRE_DIR", Path.home() / "sentientsergio" / "claire"))
-REGISTRY = CLAIRE_DIR / "workspace" / "projects" / "accord" / "sessions-registry.json"
+
+# MESH_DATA_DIR is the shared data root for inbox/archive (transport.py) and
+# the sessions registry (this file). Default is the legacy path so existing
+# data continues to be read in place.
+MESH_DATA_DIR = Path(os.environ.get(
+    "MESH_DATA_DIR",
+    str(CLAIRE_DIR / "workspace" / "projects" / "accord")
+))
+REGISTRY = MESH_DATA_DIR / "sessions-registry.json"
 REGISTRY_LOCK = REGISTRY.with_suffix(".json.lock")
 
 # --- API ---
-
-API_BASE = os.environ.get("ACCORD_API_BASE", "https://api.anthropic.com")
+# Override Anthropic API base for testing/sandboxes. Both env var names work
+# during the agent-mesh transition.
+API_BASE = (os.environ.get("MESH_API_BASE")
+            or os.environ.get("ACCORD_API_BASE")
+            or "https://api.anthropic.com")
 API_VERSION = "2023-06-01"
 
 # --- Thresholds ---
@@ -180,7 +191,7 @@ def read_registry() -> dict:
     except json.JSONDecodeError:
         # Corrupt file — return empty so callers can continue.
         sys.stderr.write(
-            f"[accord.registry] WARN: registry file corrupt at {REGISTRY}, "
+            f"[agent-mesh.registry] WARN: registry file corrupt at {REGISTRY}, "
             f"treating as empty\n"
         )
         return dict(_EMPTY_REGISTRY, sessions=[])
@@ -398,7 +409,7 @@ def gc_sweep() -> dict:
             data["updated_at"] = now
             summary["kept"] = len(kept)
     except TimeoutError:
-        sys.stderr.write("[accord.registry] gc_sweep: lock timeout, skipping\n")
+        sys.stderr.write("[agent-mesh.registry] gc_sweep: lock timeout, skipping\n")
     return summary
 
 
@@ -406,7 +417,7 @@ def gc_sweep() -> dict:
 
 def _cli() -> int:
     import argparse
-    ap = argparse.ArgumentParser(description="Accord registry admin tool")
+    ap = argparse.ArgumentParser(description="Agent-mesh registry admin tool")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("show", help="Print registry contents")

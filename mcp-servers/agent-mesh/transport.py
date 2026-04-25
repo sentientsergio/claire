@@ -1,12 +1,16 @@
 """
-Accord transport — file-mailbox + Sessions API wake.
+Agent-mesh transport — file-mailbox + Sessions API wake.
 
-Implements the two-layer design from `workspace/projects/accord/transport.md`:
+Two-layer design:
 
     1. Mailbox  — JSON envelope written to inbox/<recipient_session_id>/
     2. Wake     — optional Sessions API event poking the recipient
 
 The MCP tool layer (server.py) is a thin wrapper around `send()` here.
+
+Data location: configurable via MESH_DATA_DIR env var. Defaults to the
+legacy path ${HOME}/sentientsergio/claire/workspace/projects/accord/ for
+backward compatibility — existing inboxes and archives are read in place.
 """
 
 from __future__ import annotations
@@ -27,9 +31,14 @@ from registry import (
 
 # --- Paths ---
 
-ACCORD_DIR = CLAIRE_DIR / "workspace" / "projects" / "accord"
-INBOX_ROOT = ACCORD_DIR / "inbox"
-ARCHIVE_ROOT = ACCORD_DIR / "archive"
+# MESH_DATA_DIR is the configurable root for inbox/archive storage. Default
+# is the legacy path so existing data continues to be read in place.
+MESH_DATA_DIR = Path(os.environ.get(
+    "MESH_DATA_DIR",
+    str(CLAIRE_DIR / "workspace" / "projects" / "accord")
+))
+INBOX_ROOT = MESH_DATA_DIR / "inbox"
+ARCHIVE_ROOT = MESH_DATA_DIR / "archive"
 
 VALID_KINDS = {"direction", "status", "question", "ack", "escalation", "note"}
 
@@ -44,8 +53,9 @@ def _infer_role_label(title: str) -> tuple[str, str]:
     Default mapping from --remote-control title:
         'Claire'                 → ('root',    'Claire')
         'Claire CPPA-Paperlint'  → ('working', 'CPPA-Paperlint')
+        'Code engineer'          → ('working', 'Code engineer')
         anything else            → ('working', title)
-    Overridable via ACCORD_ROLE / ACCORD_LABEL env vars.
+    Overridable via MESH_ROLE / MESH_LABEL (or legacy ACCORD_ROLE / ACCORD_LABEL).
     """
     if title == "Claire":
         return "root", "Claire"
@@ -64,16 +74,22 @@ def whoami() -> dict:
     if _self_identity is not None:
         return _self_identity
 
-    # Title comes from launcher env var. Two accepted names — ACCORD_TITLE is
-    # the explicit one; CLAIRE_SESSION_TITLE is the convention from telegram MCP.
-    title = (os.environ.get("ACCORD_TITLE")
+    # Title comes from launcher env var. MESH_TITLE is the new explicit name;
+    # ACCORD_TITLE is supported for backward compatibility during the transition;
+    # CLAIRE_SESSION_TITLE is the legacy convention from the telegram MCP.
+    title = (os.environ.get("MESH_TITLE")
+             or os.environ.get("ACCORD_TITLE")
              or os.environ.get("CLAIRE_SESSION_TITLE")
              or "Claire")
 
     # Role and label can be set explicitly; otherwise derive from title.
     inferred_role, inferred_label = _infer_role_label(title)
-    role = os.environ.get("ACCORD_ROLE") or inferred_role
-    label = os.environ.get("ACCORD_LABEL") or inferred_label
+    role = (os.environ.get("MESH_ROLE")
+            or os.environ.get("ACCORD_ROLE")
+            or inferred_role)
+    label = (os.environ.get("MESH_LABEL")
+             or os.environ.get("ACCORD_LABEL")
+             or inferred_label)
 
     # Late import to avoid circulars and to keep the module fast at boot.
     from registry import discover_self_cse
@@ -115,7 +131,7 @@ def _publish_identity(identity: dict) -> None:
             notes="auto-registered on identity discovery",
         )
     except Exception as e:
-        sys.stderr.write(f"[accord.transport] auto-register failed: {e}\n")
+        sys.stderr.write(f"[agent-mesh.transport] auto-register failed: {e}\n")
         return
 
     def _deregister_on_exit() -> None:
@@ -136,7 +152,7 @@ def touch() -> None:
         identity = whoami()
         bump_last_seen(identity["session_id"])
     except Exception as e:
-        sys.stderr.write(f"[accord.transport] touch failed: {e}\n")
+        sys.stderr.write(f"[agent-mesh.transport] touch failed: {e}\n")
 
 
 # --- Target resolution ---
@@ -215,9 +231,7 @@ def _wake_text(envelope: dict) -> str:
     msg_id = envelope["message_id"]
     sender = envelope["from"]
     recipient_id = envelope["to"]["session_id"]
-    inbox_path = (
-        f"workspace/projects/accord/inbox/{recipient_id}/{msg_id}.json"
-    )
+    inbox_path = str(INBOX_ROOT / recipient_id / f"{msg_id}.json")
     return (
         f'<accord from="{sender["role"]}" '
         f'session="{sender["session_id"]}" '

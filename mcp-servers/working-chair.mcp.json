@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "accord": {
+    "agent-mesh": {
       "command": "bash",
-      "args": ["/Users/sergio/sentientsergio/claire/mcp-servers/accord/start.sh"]
+      "args": ["/Users/sergio/sentientsergio/claire/mcp-servers/agent-mesh/start.sh"]
     }
   }
 }
