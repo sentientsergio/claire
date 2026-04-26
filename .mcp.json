@@ -11,11 +11,11 @@
       "type": "http",
       "url": "http://localhost:18794/mcp"
     },
-    "accord": {
+    "agent-mesh": {
       "command": "bash",
-      "args": ["/Users/sergio/sentientsergio/claire/mcp-servers/accord/start.sh"],
+      "args": ["/Users/sergio/sentientsergio/claire/mcp-servers/agent-mesh/start.sh"],
       "env": {
-        "ACCORD_TITLE": "Claire"
+        "MESH_TITLE": "Claire"
       }
     }
   }
