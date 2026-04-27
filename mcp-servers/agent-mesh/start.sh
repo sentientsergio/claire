@@ -3,7 +3,7 @@
 # Per-session subprocess, loaded by every code-agent and root via .mcp.json.
 #
 # Identity is inferred from env vars (set by claire-restart / code-agent.sh):
-#   MESH_TITLE       — --remote-control title (e.g. "Claire", "Code engineer")
+#   MESH_TITLE       — --remote-control title (e.g. "Claire", "engineer - legible-pdf")
 #                       (legacy ACCORD_TITLE / CLAIRE_SESSION_TITLE also accepted)
 #   MESH_ROLE        — "root" or "working" (optional; inferred from title)
 #   MESH_LABEL       — short label for this agent (optional; inferred from title)

@@ -17,7 +17,7 @@ the legacy ${HOME}/sentientsergio/claire/workspace/projects/accord/ path
 so existing inboxes and archives are read in place.
 
 Identity inputs (env vars):
-    MESH_TITLE   — --remote-control title (e.g. "Claire", "Code engineer")
+    MESH_TITLE   — --remote-control title (e.g. "Claire", "engineer - legible-pdf")
                    (legacy ACCORD_TITLE / CLAIRE_SESSION_TITLE also accepted)
     MESH_ROLE    — "root" or "working" (optional; inferred from title)
     MESH_LABEL   — short label for this agent (optional; inferred from title)
@@ -82,7 +82,7 @@ def send(
 
     Args:
         to: Target recipient. Accepts a session_id (cse_*), a label
-            (e.g. "engineer", "Code engineer"), or the special string "root".
+            (e.g. "engineer - legible-pdf"), or the special string "root".
         kind: One of "direction", "status", "question", "ack",
               "escalation", "note". Reflects intent — the mesh is not a
               chat room; messages have purpose.

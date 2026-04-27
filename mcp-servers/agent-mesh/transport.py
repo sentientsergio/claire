@@ -51,10 +51,10 @@ _self_identity: Optional[dict] = None
 def _infer_role_label(title: str) -> tuple[str, str]:
     """
     Default mapping from --remote-control title:
-        'Claire'                 → ('root',    'Claire')
-        'Claire CPPA-Paperlint'  → ('working', 'CPPA-Paperlint')
-        'Code engineer'          → ('working', 'Code engineer')
-        anything else            → ('working', title)
+        'Claire'                       → ('root',    'Claire')
+        'Claire CPPA-Paperlint'        → ('working', 'CPPA-Paperlint')
+        'engineer - legible-pdf'       → ('working', 'engineer - legible-pdf')
+        anything else                  → ('working', title)
     Overridable via MESH_ROLE / MESH_LABEL (or legacy ACCORD_ROLE / ACCORD_LABEL).
     """
     if title == "Claire":
